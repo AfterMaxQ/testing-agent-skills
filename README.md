@@ -2,6 +2,8 @@
 
 面向 Coding Agent 的通用测试 Skill 包。输入可以是 PRD、验收标准、业务规则、接口契约或自然语言需求；输出为可追溯 Test Suite、测试就绪检查和统一测试报告。
 
+详细的用户操作说明和关键注意事项见 [USAGE.md](USAGE.md)。
+
 Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责需求级测试设计、运行条件声明、测试环境 Preflight、跨通道路由、证据判定和报告汇总。
 
 ## 1. 架构
@@ -320,6 +322,7 @@ pip install "jsonschema>=4.20,<5"
 ```text
 testing-agent-skills/
 ├── README.md
+├── USAGE.md
 ├── docs/
 │   ├── architecture.md
 │   └── implementation-plan.md
