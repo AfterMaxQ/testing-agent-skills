@@ -59,7 +59,7 @@ Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责�
 | 模块 | 负责 |
 |---|---|
 | `test-design` | 需求拆解、场景、断言、证据入口、执行通道、运行条件、需求追溯 |
-| `test-orchestrator` | Preflight、环境准备、执行路由、Evidence 汇总、PASS/FAIL/BLOCKED、报告 |
+| `test-orchestrator` | Preflight、Provision 写回、Reflight、执行路由、Evidence 汇总、状态判定、报告与 Cleanup |
 | `playwright-cli` | Browser 探索、Seed/Fixture、Locator、Playwright Test、Network Mock、Trace、Screenshot |
 
 ## 2. 数据流
@@ -84,6 +84,11 @@ test-context.json ───────────────┐
      READY  PROVISIONABLE BLOCKED
        │         │
        │      Provision
+       │         │
+       │         ▼
+       │   runtime-context.json
+       │         │
+       │      Reflight
        │         │
        └────┬────┘
             ▼
@@ -129,7 +134,7 @@ playwright-cli
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "context_id": "staging",
   "environment": {
     "name": "staging",
@@ -151,6 +156,7 @@ playwright-cli
       "kind": "playwright",
       "provides": [{"category": "auth_roles", "name": "normal_user"}],
       "action": "登录测试账号并保存 Playwright storage state",
+      "verification": "重新打开受保护页面并确认 normal_user 已登录",
       "cleanup_action": null,
       "requires_env": ["TEST_USER_PASSWORD"],
       "notes": []
@@ -181,7 +187,16 @@ Preflight 将每条 Case 分为：
 
 `readiness.md` 会按缺失条件聚合受影响 Case，便于一次补齐账号、权限、日志入口或测试数据。
 
-对 `PROVISIONABLE` Case，`test-orchestrator` 执行 Test Context 中受信任的 Provisioner，然后重新运行 Preflight。只有 Provision 后仍不满足运行条件，Case 才进入 `BLOCKED`。
+对可自动准备的 Gap，`test-orchestrator` 执行 Test Context 中受信任的 Provisioner 并验证结果。验证成功后执行：
+
+```bash
+python skills/test-orchestrator/scripts/apply_provision.py test-context.json \
+  --verified prepare-normal-user \
+  --out runtime-context.json
+python skills/test-orchestrator/scripts/preflight.py test-cases.json runtime-context.json --out readiness-after.json
+```
+
+只有验证成功的 `provides` 才写入 Runtime Context。Reflight 后仍不满足运行条件，Case 才进入 `BLOCKED`；Provision 失败记录为 `provision_failure`，不判产品 FAIL。
 
 ### 2.4 Browser Case
 
@@ -225,6 +240,7 @@ AC-022：长文本核实时，段落并发数固定为 3。
   "id": "F005-AC022-001",
   "title": "长文本核实固定三段并发",
   "source_refs": ["AC-022"],
+  "open_question_refs": [],
   "objective": "验证长文本段落处理并发数固定为 3",
   "design_status": "READY",
   "priority": "P0",
@@ -274,7 +290,9 @@ logs:verify-service — BLOCKED
 3. A1 的 Actual 与 Expected 比较；
 4. 有证据证明并发数为 3 → `PASS`；
 5. 证据显示并发数不是 3 → `FAIL`；
-6. Provision 后仍无法读取日志 → `BLOCKED`，并在报告中记录结构化 blocker。
+6. Provision 后仍无法读取日志 → `BLOCKED`，并在报告中记录结构化 blocker；
+7. PASS/FAIL 都保存本次运行 Evidence，Report 必须精确覆盖全部 Suite Case；
+8. 测试结束后只清理本次成功 Provision 创建的资源，并记录 Cleanup 状态。
 
 最终：
 
@@ -294,7 +312,7 @@ npm install -g @playwright/cli@0.1.18
 Python 校验脚本需要：
 
 ```bash
-pip install jsonschema
+pip install "jsonschema>=4.20,<5"
 ```
 
 ## 5. 目录

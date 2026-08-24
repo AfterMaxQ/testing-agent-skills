@@ -8,12 +8,13 @@
     "schema_version",
     "suite_id",
     "context_id",
+    "provisioning",
     "summary",
     "case_results"
   ],
   "properties": {
     "schema_version": {
-      "const": "1.2"
+      "const": "1.3"
     },
     "suite_id": {
       "type": "string",
@@ -22,6 +23,12 @@
     "context_id": {
       "type": "string",
       "minLength": 1
+    },
+    "provisioning": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provisionResult"
+      }
     },
     "summary": {
       "type": "object",
@@ -124,6 +131,52 @@
           "minLength": 1
         },
         "artifact_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "provisionResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provisioner_id",
+        "status",
+        "observed",
+        "evidence",
+        "cleanup_status",
+        "cleanup_observed"
+      ],
+      "properties": {
+        "provisioner_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_EXECUTED"
+          ]
+        },
+        "observed": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "cleanup_status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "NOT_REQUIRED",
+            "NOT_EXECUTED"
+          ]
+        },
+        "cleanup_observed": {
           "type": "string"
         }
       }

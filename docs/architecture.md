@@ -13,7 +13,7 @@ Test Suite + execution_requirements
    ↓
 Test Context
    ↓
-Preflight → Provision
+Preflight → Provision → Runtime Context → Reflight
    ↓
 test-orchestrator
    ↓
@@ -40,7 +40,7 @@ Report
 - `permissions`：日志、接口、源码等访问权限；
 - `env_vars`：运行依赖的环境变量名。
 
-需求存在冲突或无法唯一确定预期时，记录 `open_questions`，Case 标记为 `NEEDS_CLARIFICATION`。
+需求存在冲突或无法唯一确定预期时，记录 `open_questions`，Case 标记为 `NEEDS_CLARIFICATION`，并通过 `open_question_refs` 关联问题。
 
 ## 3. Test Context
 
@@ -84,7 +84,9 @@ Provisioner 由 Test Context 定义，不能由需求文本动态生成并执行
 - `api`：创建测试数据、切换测试开关；
 - `manual`：人工授权或环境变更。
 
-自动 Provision 完成后重新运行 Preflight。`BLOCKED` 只用于仍然无法满足的 Case。
+自动 Provisioner 必须声明 `action`、`verification`、`provides`、`requires_env` 和可选 `cleanup_action`。只有 `verification` 产生直接证据后，`provides` 才能写入本次 Runtime Context。Runtime Context 继续使用 Test Context Schema，不增加新的公开契约。
+
+写回后使用 Runtime Context 重新运行 Preflight。Provision 失败记录为 `provision_failure`，不判产品 FAIL；Reflight 后仍不满足的 Case 才进入最终 `BLOCKED`。
 
 ## 6. test-orchestrator
 
@@ -92,12 +94,12 @@ Orchestrator 负责：
 
 1. 校验 Test Suite 和 Test Context；
 2. Preflight；
-3. 执行可用 Provisioner；
-4. 再次 Preflight；
+3. 执行并验证可用 Provisioner；
+4. 写入 Runtime Context 并再次 Preflight；
 5. 路由 READY Case；
 6. 收集 Actual Evidence；
-7. 统一判定并生成 Report；
-8. 清理由本次运行创建的测试资源。
+7. 统一判定并生成完整覆盖 Suite 的 Report；
+8. 逆序清理由本次成功 Provision 创建的资源，并记录 Cleanup 状态。
 
 Orchestrator 不修改 Expected，也不重新设计 Case。
 
@@ -130,11 +132,15 @@ Browser 侧使用 Microsoft 官方 Playwright CLI Skill。
 
 测试系统不通过 UI 现象猜测不可观察的内部实现。
 
+API、Log-Trace 和 Static Inspection 使用与 Browser 相同的 Assertion 输出协议：Status、Observed、Evidence 和可选 Blocker。Adapter 是 Orchestrator 的工具中立执行规则，不建设插件注册表或独立服务。
+
 ## 9. 数据契约
 
 - `test-design/schema.json`：Test Suite；
 - `test-orchestrator/context.schema.json`：Test Context；
 - `test-orchestrator/readiness.schema.json`：Preflight 输出；
 - `test-orchestrator/schema.json`：最终 Test Report。
+
+Runtime Context 是 Test Context 的本次运行副本，继续由 `context.schema.json` 校验。Test Report 同时记录 Provision 和 Cleanup，避免增加独立 Run State Schema。
 
 这些协议不包含临时 Browser Element Ref、Session ID 或 Secret 值。

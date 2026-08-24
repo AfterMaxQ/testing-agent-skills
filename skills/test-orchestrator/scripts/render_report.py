@@ -30,6 +30,19 @@ def main() -> int:
         f"- 未执行：{summary['not_executed']}", "",
     ]
 
+    if report.get("provisioning"):
+        lines += ["## 环境准备与清理", ""]
+        for record in report["provisioning"]:
+            lines.append(f"### `{record['provisioner_id']}` — {record['status']}")
+            lines.append("")
+            lines.append(record["observed"] or "未记录环境准备表现")
+            lines.append("")
+            for evidence in record.get("evidence", []):
+                path = f" (`{evidence['artifact_path']}`)" if evidence.get("artifact_path") else ""
+                lines.append(f"- 证据 [{evidence['kind']}]：{evidence['summary']}{path}")
+            lines.append(f"- Cleanup：**{record['cleanup_status']}** — {record['cleanup_observed'] or '无'}")
+            lines.append("")
+
     for result in report["case_results"]:
         case = cases.get(result["case_id"], {})
         title = case.get("title", "")

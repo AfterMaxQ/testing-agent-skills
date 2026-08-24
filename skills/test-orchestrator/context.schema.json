@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "context_id": {
       "type": "string",
@@ -177,6 +177,7 @@
         "kind",
         "provides",
         "action",
+        "verification",
         "requires_env"
       ],
       "properties": {
@@ -200,6 +201,10 @@
           }
         },
         "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verification": {
           "type": "string",
           "minLength": 1
         },

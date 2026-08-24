@@ -16,6 +16,13 @@ CONTEXT_SCHEMA = SKILL_DIR / "context.schema.json"
 READINESS_SCHEMA = SKILL_DIR / "readiness.schema.json"
 CATEGORIES = ("capabilities", "auth_roles", "test_data", "observability", "fault_injection", "permissions", "env_vars")
 
+TEST_DESIGN_SCRIPTS = SKILL_DIR.parent / "test-design" / "scripts"
+if str(TEST_DESIGN_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(TEST_DESIGN_SCRIPTS))
+
+from validate_context import semantic_errors as context_semantic_errors  # noqa: E402
+from validate_testcases import semantic_errors as suite_semantic_errors  # noqa: E402
+
 
 def load(path: pathlib.Path):
     return json.loads(path.read_text(encoding="utf-8"))
@@ -43,15 +50,22 @@ def main() -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    input_errors = validate(suite, suite_schema, "SUITE") + validate(context, context_schema, "CONTEXT")
+    suite_errors = validate(suite, suite_schema, "SUITE")
+    context_errors = validate(context, context_schema, "CONTEXT")
+    input_errors = suite_errors + context_errors
+    if not suite_errors:
+        input_errors += [f"SUITE semantic: {message}" for message in suite_semantic_errors(suite)]
+    if not context_errors:
+        input_errors += [f"CONTEXT semantic: {message}" for message in context_semantic_errors(context)]
     if input_errors:
         for err in input_errors:
             print(err, file=sys.stderr)
         return 1
 
     available = {k: set(context["available"].get(k, [])) for k in CATEGORIES}
+    runtime_env = {name for name in os.environ if os.environ.get(name) is not None}
     # Environment variables may be declared in context or be present in the actual runtime.
-    available["env_vars"] |= {name for name in os.environ if os.environ.get(name) is not None}
+    available["env_vars"] |= runtime_env
 
     providers_by_item: dict[tuple[str, str], list[dict]] = collections.defaultdict(list)
     for p in context.get("provisioners", []):
@@ -84,7 +98,7 @@ def main() -> int:
                     manual = []
                     unavailable_env = []
                     for p in candidates:
-                        missing_env = [e for e in p.get("requires_env", []) if e not in available["env_vars"]]
+                        missing_env = [e for e in p.get("requires_env", []) if e not in runtime_env]
                         if p["kind"] == "manual":
                             manual.append(p)
                         elif missing_env:
