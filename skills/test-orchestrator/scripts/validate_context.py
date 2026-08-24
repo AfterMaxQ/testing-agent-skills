@@ -22,6 +22,26 @@ VALID_ITEM_NAMES = {
 def semantic_errors(data: dict) -> list[str]:
     semantic: list[str] = []
     ids: set[str] = set()
+    runtime_secret_names: set[str] = set()
+    runtime_secret_env_keys: set[str] = set()
+
+    for secret in data.get("runtime_secrets", []):
+        name = secret.get("name")
+        env_key = secret.get("env_key")
+        if name in runtime_secret_names:
+            semantic.append(f"duplicate runtime secret name: {name}")
+        if env_key in runtime_secret_env_keys:
+            semantic.append(f"duplicate runtime secret env_key: {env_key}")
+        if isinstance(name, str):
+            runtime_secret_names.add(name)
+        if isinstance(env_key, str):
+            runtime_secret_env_keys.add(env_key)
+
+        status = secret.get("status")
+        if status == "resolved" and secret.get("resolved_at") is None:
+            semantic.append(f"runtime secret {name}: resolved requires resolved_at")
+        if status != "resolved" and secret.get("resolved_at") is not None:
+            semantic.append(f"runtime secret {name}: non-resolved status cannot have resolved_at")
 
     for provisioner in data.get("provisioners", []):
         pid = provisioner.get("id")
@@ -29,6 +49,14 @@ def semantic_errors(data: dict) -> list[str]:
             semantic.append(f"duplicate provisioner id: {pid}")
         if isinstance(pid, str):
             ids.add(pid)
+
+        secret_names: set[str] = set()
+        for secret in provisioner.get("secret_requirements", []):
+            name = secret.get("name")
+            if name in secret_names:
+                semantic.append(f"{pid}: duplicate secret requirement: {name}")
+            if isinstance(name, str):
+                secret_names.add(name)
 
         provided: set[tuple[str, str]] = set()
         for item in provisioner.get("provides", []):

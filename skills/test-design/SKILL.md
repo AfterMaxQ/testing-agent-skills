@@ -21,7 +21,7 @@ description: Use when 需要把 PRD、验收标准、业务规则、接口契约
 4. 按需求和风险设计正常、异常、边界/等价类、状态/持久化场景；不要无依据扩展业务规则。
 5. 每个 Case 写业务级 `steps` 和精确 `assertions`。禁止使用“功能正常”“结果合理”作为必需断言。
 6. 每个 Assertion 指定 `observe_via`，据此选择 `execution_channels`。
-7. 为每个 Case 填写 `execution_requirements`，声明执行前必须具备的能力、账号角色、测试数据、可观察性、故障注入、权限和环境变量。
+7. 为每个 Case 填写 `execution_requirements`，声明执行前必须具备的能力、账号角色、测试数据、可观察性、故障注入、权限、环境变量和 Secret。
 8. 输出符合 `schema.json` 的 JSON，并运行校验脚本。
 
 ## Execution Requirements
@@ -36,7 +36,10 @@ description: Use when 需要把 PRD、验收标准、业务规则、接口契约
   "observability": ["browser_dom", "browser_network"],
   "fault_injection": [],
   "permissions": [],
-  "env_vars": []
+  "env_vars": [],
+  "secret_requirements": [
+    {"name": "test_user_password", "required": true, "persist": false}
+  ]
 }
 ```
 
@@ -51,6 +54,7 @@ description: Use when 需要把 PRD、验收标准、业务规则、接口契约
 | `fault_injection` | 需要模拟的故障，例如 `web_search_timeout` |
 | `permissions` | API、日志、源码等访问权限名 |
 | `env_vars` | 运行时必须存在的环境变量名，不写其值 |
+| `secret_requirements` | Secret 业务名称、是否必需和本次运行是否允许持久化，不写 Secret 值 |
 
 如果某个内部行为只有日志或 Trace 才能证明，就把该观察入口写进 `observability`。不要因为当前环境可能没有它而删除 Case。
 
@@ -82,7 +86,7 @@ Browser Case 只保留业务级步骤。真实页面的探索、Seed / Fixture�
 
 Schema：`schema.json`
 
-当前 Schema Version：`1.3`。
+当前 Schema Version：`1.4`。
 
 ```bash
 python scripts/validate_testcases.py test-cases.json

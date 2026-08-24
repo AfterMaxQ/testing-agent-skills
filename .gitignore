@@ -1,0 +1,4 @@
+.testing-agent/secrets.env
+.testing-agent/runtime/
+.testing-agent/*.local
+__pycache__/

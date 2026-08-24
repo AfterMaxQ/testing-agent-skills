@@ -13,7 +13,10 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.1"
+      "enum": [
+        "1.1",
+        "1.2"
+      ]
     },
     "context_id": {
       "type": "string",
@@ -51,6 +54,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/provisioner"
+      }
+    },
+    "runtime_secrets": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtimeSecret"
       }
     }
   },
@@ -222,11 +231,107 @@
             "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
           }
         },
+        "secret_requirements": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/secretRequirement"
+          }
+        },
         "notes": {
           "type": "array",
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "secretRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "required",
+        "persist"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "persist": {
+          "type": "boolean"
+        }
+      }
+    },
+    "runtimeSecret": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "env_key",
+        "source",
+        "status",
+        "persist_policy",
+        "resolved_at",
+        "expires"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]*$"
+        },
+        "env_key": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        },
+        "source": {
+          "enum": [
+            "runtime_secret_store",
+            "local_secret_store",
+            "environment",
+            "vault",
+            "aws_secrets_manager",
+            "github_actions",
+            "kubernetes",
+            "manual",
+            "none"
+          ]
+        },
+        "status": {
+          "enum": [
+            "resolved",
+            "missing",
+            "unavailable",
+            "manual_required",
+            "expired"
+          ]
+        },
+        "persist_policy": {
+          "enum": [
+            "never",
+            "allowed",
+            "session"
+          ]
+        },
+        "resolved_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "expires": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
         }
       }
     }

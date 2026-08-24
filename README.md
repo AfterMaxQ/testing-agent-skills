@@ -29,7 +29,8 @@ Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责�
                                 ▼
                     ┌────────────────────────┐
                     │   test-orchestrator    │
-                    │ Preflight / Provision  │
+                    │ Secret / Preflight /   │
+                    │ Provision / Reflight   │
                     └───────────┬────────────┘
                                 │
                       Ready / Provisioned
@@ -79,6 +80,9 @@ test-context.json ───────────────┐
   │                              │
   └──────────────┬───────────────┘
                  ▼
+         Secret Resolution
+                 │
+                 ▼
               Preflight
                  │
        ┌─────────┼─────────┐
@@ -124,7 +128,10 @@ playwright-cli
   "observability": ["browser_dom", "log"],
   "fault_injection": ["web_search_timeout"],
   "permissions": ["logs:verify-service"],
-  "env_vars": []
+  "env_vars": [],
+  "secret_requirements": [
+    {"name": "test_user_password", "required": true, "persist": false}
+  ]
 }
 ```
 
@@ -136,7 +143,7 @@ playwright-cli
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "context_id": "staging",
   "environment": {
     "name": "staging",
@@ -152,6 +159,7 @@ playwright-cli
     "permissions": ["logs:verify-service"],
     "env_vars": []
   },
+  "runtime_secrets": [],
   "provisioners": [
     {
       "id": "prepare-normal-user",
@@ -160,14 +168,17 @@ playwright-cli
       "action": "登录测试账号并保存 Playwright storage state",
       "verification": "重新打开受保护页面并确认 normal_user 已登录",
       "cleanup_action": null,
-      "requires_env": ["TEST_USER_PASSWORD"],
+      "requires_env": [],
+      "secret_requirements": [
+        {"name": "test_user_password", "required": true, "persist": false}
+      ],
       "notes": []
     }
   ]
 }
 ```
 
-敏感值通过环境变量或 Secret Manager 注入，不写入 Test Context。
+敏感值通过 Secret Resolver 注入，不写入 Test Suite、Test Context、Readiness 或 Report。Runtime Context 的 `runtime_secrets` 只保存来源、状态和生命周期元数据。
 
 ### 2.3 Preflight 与 Provision
 
@@ -176,7 +187,12 @@ playwright-cli
 ```bash
 python skills/test-design/scripts/validate_testcases.py test-cases.json
 python skills/test-orchestrator/scripts/validate_context.py test-context.json
-python skills/test-orchestrator/scripts/preflight.py test-cases.json test-context.json --out readiness.json
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
+  --suite test-cases.json \
+  --context test-context.json \
+  --out runtime-context.json
+python skills/test-orchestrator/scripts/preflight.py test-cases.json runtime-context.json --out readiness.json
 python skills/test-orchestrator/scripts/render_readiness.py readiness.json --out readiness.md
 ```
 
@@ -198,7 +214,9 @@ python skills/test-orchestrator/scripts/apply_provision.py test-context.json \
 python skills/test-orchestrator/scripts/preflight.py test-cases.json runtime-context.json --out readiness-after.json
 ```
 
-只有验证成功的 `provides` 才写入 Runtime Context。Reflight 后仍不满足运行条件，Case 才进入 `BLOCKED`；Provision 失败记录为 `provision_failure`，不判产品 FAIL。
+只有验证成功的 `provides` 才写入 Runtime Context。Secret Resolver 解析出的值只注入它启动的子进程；必需 Secret 未 `resolved` 时不会启动后续命令。Reflight 后仍不满足运行条件，Case 才进入 `BLOCKED`；Provision 失败记录为 `provision_failure`，不判产品 FAIL。
+
+Secret Resolver 的默认来源顺序为 Runtime Secret Store、`.testing-agent/secrets.env`、当前进程环境变量、已声明的外部 Provider、显式启用的 Manual Input。普通开发者只需复制 `.testing-agent/secrets.env.example` 为 `.testing-agent/secrets.env` 并填写值；该文件已被 `.gitignore` 排除。
 
 ### 2.4 Browser Case
 
@@ -255,7 +273,10 @@ AC-022：长文本核实时，段落并发数固定为 3。
     "observability": ["browser_dom", "log"],
     "fault_injection": [],
     "permissions": ["logs:verify-service"],
-    "env_vars": []
+    "env_vars": [],
+    "secret_requirements": [
+      {"name": "test_user_password", "required": true, "persist": false}
+    ]
   },
   "test_data": {"fixture": "long_text_fixture"},
   "steps": ["提交长文本核实", "等待处理完成"],
@@ -336,7 +357,20 @@ testing-agent-skills/
 │   │   ├── schema.json
 │   │   ├── context.schema.json
 │   │   ├── readiness.schema.json
+│   │   ├── secret.schema.json
+│   │   ├── secret-resolver/SKILL.md
 │   │   └── scripts/
+│   │       ├── resolve_secret.py
+│   │       ├── preflight.py
+│   │       ├── render_readiness.py
+│   │       ├── apply_provision.py
+│   │       ├── validate_context.py
+│   │       ├── validate_report.py
+│   │       └── render_report.py
 │   └── playwright-cli/
-└── licenses/
+├── licenses/
+├── .gitignore
+└── .testing-agent/
+    ├── config.example.json
+    └── secrets.env.example
 ```

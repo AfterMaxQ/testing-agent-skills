@@ -80,6 +80,7 @@
         "fault_injection",
         "permissions",
         "env_vars",
+        "secret_requirements",
         "requirement_clarification"
       ]
     },

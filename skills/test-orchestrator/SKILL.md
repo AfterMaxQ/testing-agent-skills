@@ -9,7 +9,7 @@ description: Use when 需要执行结构化测试套件、准备测试运行条�
 
 执行固定链路：
 
-`Test Suite + Test Context → Preflight → Provision → Runtime Context → Reflight → Execute → Evidence → Report → Cleanup`
+`Test Suite + Test Context → Secret Resolution → Preflight → Provision → Runtime Context → Reflight → Execute → Evidence → Report → Cleanup`
 
 Expected 只来自原始需求和 Test Suite。产品实际行为只能形成 Actual，不得为了让测试通过而修改 Expected。
 
@@ -22,15 +22,33 @@ Expected 只来自原始需求和 Test Suite。产品实际行为只能形成 Ac
 - 可访问的目标环境或源码范围；
 - Context 所声明的账号、权限、环境变量和观察入口。
 
-Test Context 只保存能力名称、资源引用和受信任 Provisioner，不保存密码、Token 或 Session 值。Skill 使用工具中立的契约，不依赖 Codex、Trae 或某个 Agent 的专有工具名。
+Test Context 只保存能力名称、资源引用、Secret 运行元数据和受信任 Provisioner，不保存密码、Token 或 Session 值。Skill 使用工具中立的契约，不依赖 Codex、Trae 或某个 Agent 的专有工具名。
 
-## 2. Preflight
+## 2. Secret Resolution
+
+Case 和 Provisioner 使用 `secret_requirements` 声明 Secret 业务名称、必需性和持久化策略。Secret 定义位于 `secret.schema.json`，只保存业务名称到环境变量名的映射和允许来源。
+
+Resolver 按以下顺序寻找值：Runtime Secret Store、`.testing-agent/secrets.env`、当前进程环境变量、已声明的外部 Provider、显式启用的 Manual Input。值只进入 Resolver 及其 `--exec` 子进程环境，不写入 Suite、Context、Readiness、Report 或日志。
+
+```bash
+python scripts/resolve_secret.py \
+  --schema secret.schema.json \
+  --suite test-cases.json \
+  --context test-context.json \
+  --out runtime-context.json \
+  --exec python scripts/preflight.py test-cases.json runtime-context.json --out readiness.json
+```
+
+Runtime Context 的 `runtime_secrets` 只记录 `source`、`status`、`resolved_at`、`expires` 和持久化策略。必需 Secret 不是 `resolved`，Resolver 返回非零状态且不执行 `--exec`；外部 Provider 没有可用连接时记录 `unavailable`；Manual Input 需要 `--allow-manual`。
+
+## 3. Preflight
 
 执行：
 
 ```bash
 python scripts/validate_context.py test-context.json
-python scripts/preflight.py test-cases.json test-context.json --out readiness-before.json
+python scripts/resolve_secret.py --schema secret.schema.json --suite test-cases.json --context test-context.json --out runtime-context.json
+python scripts/preflight.py test-cases.json runtime-context.json --out readiness-before.json
 python scripts/render_readiness.py readiness-before.json --out readiness-before.md
 ```
 
@@ -45,9 +63,9 @@ Preflight 同时执行 Schema 和语义校验，并比较：
 - `BLOCKED`：没有自动解决路径、只有人工路径或 Provisioner 缺少真实环境变量；
 - `NEEDS_CLARIFICATION`：Expected 尚不能唯一确定。
 
-Provision 决策按 Gap 进行。即使某个 Case 总状态为 BLOCKED，其中可自动准备且能服务其他 Case 的 Gap 仍进入 Provision 计划。
+Provision 决策按 Gap 进行。即使某个 Case 总状态为 BLOCKED，其中可自动准备且能服务其他 Case 的 Gap 仍进入 Provision 处理。
 
-## 3. Provision
+## 4. Provision
 
 Provisioner 只能来自受信任的 Test Context：
 
@@ -84,7 +102,7 @@ Provision 失败时：
 - 记录 `provision_failure` blocker；
 - 不判产品 FAIL。
 
-## 4. Reflight
+## 5. Reflight
 
 Provision 后必须重新执行：
 
@@ -95,7 +113,7 @@ python scripts/render_readiness.py readiness-after.json --out readiness-after.md
 
 只有 Reflight 为 READY 的 Case 才进入执行。Reflight 后的 BLOCKED 和 NEEDS_CLARIFICATION Case 直接生成对应 Assertion 的 BLOCKED Actual，不编造执行记录。
 
-## 5. 通道执行
+## 6. 通道执行
 
 每个通道返回相同结构：Assertion ID、Status、Observed、Evidence，无法执行时返回 Blocker。
 
@@ -138,7 +156,7 @@ python scripts/render_readiness.py readiness-after.json --out readiness-after.md
 
 Case 声明的所有 `observe_via` 都是计划采集的证据。按 Assertion 路由对应通道，通道只返回自身观察结果，最终状态由统一规则聚合。
 
-## 6. Assertion 与 Case 判定
+## 7. Assertion 与 Case 判定
 
 Assertion：
 
@@ -156,7 +174,7 @@ Case 只按必需 Assertion 聚合：
 
 Case 同时存在 FAIL 和 BLOCKED Assertion 时，Case 为 FAIL，但必须保留 blockers。`NEEDS_CLARIFICATION` Case 在最终 Report 中映射为 BLOCKED，并使用 `requirement_clarification` blocker。
 
-## 7. Report
+## 8. Report
 
 `report.json` 必须：
 
@@ -183,7 +201,7 @@ python scripts/render_report.py report.json \
 
 Playwright HTML Report 可作为 Browser 详细产物；`test-report.md` 是跨通道的正式需求级报告。
 
-## 8. Cleanup
+## 9. Cleanup
 
 在 Case PASS、FAIL、BLOCKED 或执行异常后均执行 Cleanup：
 
@@ -193,7 +211,7 @@ Playwright HTML Report 可作为 Browser 详细产物；`test-report.md` 是跨�
 4. Cleanup PASS/FAIL/NOT_EXECUTED 均记录具体表现；
 5. Cleanup 失败不覆盖产品测试结果。
 
-## 9. 禁止事项
+## 10. 禁止事项
 
 - 不修改 Expected 适配产品现状；
 - 不把“未发现错误”当成 PASS；

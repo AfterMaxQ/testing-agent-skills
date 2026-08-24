@@ -18,6 +18,7 @@
 需求文档
   → test-cases.json
   → test-context.json
+  → Secret Resolution
   → Preflight
   → Provision
   → runtime-context.json
@@ -118,7 +119,7 @@ test-run/
 | `test-cases.json` | 需求级 Test Suite |
 | `test-context.json` | 基础环境已经具备什么、缺少时怎样准备 |
 | `readiness-before.*` | Provision 前的就绪情况 |
-| `runtime-context.json` | 仅包含已验证 Provision 结果的本次运行 Context |
+| `runtime-context.json` | 本次运行的 Context 副本、已验证 Provision 结果和 Secret 元数据 |
 | `readiness-after.*` | Provision 后重新检查的结果 |
 | `report.json` | 机器可校验的最终报告 |
 | `test-report.md` | 用户阅读和交付的正式报告 |
@@ -143,7 +144,7 @@ test-run/
 4. 为每条 Assertion 指定实际计划取得的 observe_via；
 5. 区分 browser、api、log_trace、static_inspection；
 6. 无法唯一确定 Expected 时标记 NEEDS_CLARIFICATION；
-7. 输出符合 Test Suite Schema 1.3；
+7. 输出符合 Test Suite Schema 1.4；
 8. 输出后运行 validate_testcases.py。
 ```
 
@@ -151,7 +152,7 @@ test-run/
 
 ```json
 {
-  "schema_version": "1.3",
+  "schema_version": "1.4",
   "suite_id": "feature-smoke",
   "feature": "示例功能",
   "source_documents": [
@@ -179,7 +180,10 @@ test-run/
         "observability": ["browser_dom"],
         "fault_injection": [],
         "permissions": [],
-        "env_vars": []
+        "env_vars": [],
+        "secret_requirements": [
+          {"name": "test_user_password", "required": true, "persist": false}
+        ]
       },
       "test_data": {
         "fixture": "short_text_fixture",
@@ -276,7 +280,7 @@ Test Suite 表示“Case 需要什么”，Test Context 表示“当前环境有
 
 ```json
 {
-  "schema_version": "1.1",
+  "schema_version": "1.2",
   "context_id": "staging",
   "environment": {
     "name": "staging",
@@ -297,6 +301,7 @@ Test Suite 表示“Case 需要什么”，Test Context 表示“当前环境有
     "permissions": [],
     "env_vars": []
   },
+  "runtime_secrets": [],
   "provisioners": [
     {
       "id": "prepare-normal-user",
@@ -310,7 +315,10 @@ Test Suite 表示“Case 需要什么”，Test Context 表示“当前环境有
       "action": "使用测试账号登录并保存 Playwright Storage State",
       "verification": "重新打开受保护页面并确认 normal_user 已登录",
       "cleanup_action": null,
-      "requires_env": ["TEST_USER_PASSWORD"],
+      "requires_env": [],
+      "secret_requirements": [
+        {"name": "test_user_password", "required": true, "persist": false}
+      ],
       "notes": []
     }
   ]
@@ -332,9 +340,56 @@ Test Suite 表示“Case 需要什么”，Test Context 表示“当前环境有
 
 ### 6.3 Secret 和环境变量
 
-密码、Token、Cookie 和 Session 值不能写进 Context。
+密码、Token、Cookie 和 Session 值不能写进 Suite、Context、Readiness、Report 或截图。Secret 定义写在 `skills/test-orchestrator/secret.schema.json`，本地值默认写在 `.testing-agent/secrets.env`。
 
-PowerShell 设置环境变量：
+第一次使用时复制模板：
+
+PowerShell：
+
+```powershell
+Copy-Item .testing-agent/secrets.env.example .testing-agent/secrets.env
+notepad .testing-agent/secrets.env
+```
+
+Bash：
+
+```bash
+cp .testing-agent/secrets.env.example .testing-agent/secrets.env
+$EDITOR .testing-agent/secrets.env
+```
+
+`.testing-agent/secrets.env` 和 `.testing-agent/runtime/` 已被 `.gitignore` 排除。不要把真实值填入 `*.example` 文件之外的 JSON、Markdown 或命令行参数。
+
+需要自定义 Secret 文件路径或默认启用 Manual Input 时，复制 `.testing-agent/config.example.json` 为 `.testing-agent/config.json` 再调整对应字段；默认路径无需配置文件。
+
+Secret Resolver 的来源顺序：Runtime Secret Store → Local Secret Store → 当前进程环境变量 → 已声明的外部 Provider → 显式启用的 Manual Input。
+
+生成 Runtime Context：
+
+```bash
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
+  --suite test-run/test-cases.json \
+  --context test-run/test-context.json \
+  --out test-run/runtime-context.json
+```
+
+把解析后的值只注入后续命令：
+
+```bash
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
+  --suite test-run/test-cases.json \
+  --context test-run/test-context.json \
+  --out test-run/runtime-context.json \
+  --exec python skills/test-orchestrator/scripts/preflight.py \
+    test-run/test-cases.json test-run/runtime-context.json \
+    --out test-run/readiness-before.json
+```
+
+Runtime Context 只保存 `source`、`status`、`env_key`、`persist_policy`、`resolved_at` 和 `expires` 等元数据。`persist` 只记录策略，Resolver 不自动把值写回 Secret Store。必需 Secret 不是 `resolved` 时，Resolver 返回非零退出码且不执行 `--exec`；外部 Provider 没有连接时记录 `unavailable`；人工输入只有显式添加 `--allow-manual` 才会启用。
+
+直接使用进程环境变量也是可行的：
 
 ```powershell
 $env:TEST_USER_PASSWORD = "通过安全方式取得的密码"
@@ -347,7 +402,7 @@ export TEST_USER_PASSWORD="通过安全方式取得的密码"
 ```
 
 > [!IMPORTANT]
-> Provisioner 的 `requires_env` 检查当前进程中真实存在的环境变量。只在 `available.env_vars` 中写一个名字，不能证明 Secret 已注入。
+> `available.env_vars` 只声明 Case 的环境依赖，不能证明 Secret 已注入。Preflight 对 Secret 还会检查 Runtime Context 的 `resolved` 状态和当前子进程中的非空 `env_key`。
 
 ### 6.4 校验 Test Context
 
@@ -360,7 +415,7 @@ python skills/test-orchestrator/scripts/validate_context.py test-run/test-contex
 生成机器可读 Readiness：
 
 ```bash
-python skills/test-orchestrator/scripts/preflight.py test-run/test-cases.json test-run/test-context.json --out test-run/readiness-before.json
+python skills/test-orchestrator/scripts/preflight.py test-run/test-cases.json test-run/runtime-context.json --out test-run/readiness-before.json
 ```
 
 生成用户可读 Markdown：
@@ -399,7 +454,7 @@ Provisioner 类型：
 自动 Provision 固定顺序：
 
 1. 从 Readiness 中选择候选 Provisioner；
-2. 检查真实 `requires_env`；
+2. 检查真实 `requires_env` 和 `secret_requirements`；
 3. 执行 Context 中的 `action`；
 4. 执行 `verification`；
 5. 保存 Provision Evidence；
@@ -736,35 +791,37 @@ test-report.md
 - 输出目录：<运行目录>
 
 固定执行顺序：
-1. 用 test-design 生成符合 Schema 1.3 的 test-cases.json。
+1. 用 test-design 生成符合 Schema 1.4 的 test-cases.json。
 2. 运行 validate_testcases.py；失败时停止。
-3. 校验 Test Context 1.1。
-4. 运行 Preflight，输出 readiness-before.json 和 readiness-before.md。
-5. 对 PROVISIONABLE Gap 执行 Context 中的受信任 Provisioner。
-6. 执行 verification 并保存直接 Evidence。
-7. 只有验证成功后才能调用 apply_provision.py 写 runtime-context.json。
-8. 使用 Runtime Context 重新 Preflight。
-9. 只执行 Reflight 为 READY 的 Case。
-10. Browser 使用 playwright-cli；其他 Case 按 API、Log-Trace、Static Inspection 规则执行。
-11. 不得修改 Expected 适配当前产品行为。
-12. 未执行、无法观察或证据不足时不得判 PASS。
-13. report.json 必须精确覆盖全部 Suite Case。
-14. PASS/FAIL 必须有本次运行 Evidence；FAIL 写具体失败表现，不分析根因。
-15. BLOCKED 写结构化 blocker，不伪装成产品 FAIL。
-16. 执行 Cleanup 并记录状态。
-17. 运行 validate_report.py；校验通过后生成 test-report.md。
+3. 校验 Test Context 1.2。
+4. 运行 Secret Resolver，输出 runtime-context.json。
+5. 运行 Preflight，输出 readiness-before.json 和 readiness-before.md。
+6. 对 PROVISIONABLE Gap 执行 Context 中的受信任 Provisioner。
+7. 执行 verification 并保存直接 Evidence。
+8. 只有验证成功后才能调用 apply_provision.py 写 runtime-context.json。
+9. 使用 Runtime Context 重新 Preflight。
+10. 只执行 Reflight 为 READY 的 Case。
+11. Browser 使用 playwright-cli；其他 Case 按 API、Log-Trace、Static Inspection 规则执行。
+12. 不得修改 Expected 适配当前产品行为。
+13. 未执行、无法观察或证据不足时不得判 PASS。
+14. report.json 必须精确覆盖全部 Suite Case。
+15. PASS/FAIL 必须有本次运行 Evidence；FAIL 写具体失败表现，不分析根因。
+16. BLOCKED 写结构化 blocker，不伪装成产品 FAIL。
+17. 执行 Cleanup 并记录状态。
+18. 运行 validate_report.py；校验通过后生成 test-report.md。
 ```
 
 ## 15. 交付前检查清单
 
-- [ ] Test Suite Schema Version 为 `1.3`；
-- [ ] Test Context Schema Version 为 `1.1`；
+- [ ] Test Suite Schema Version 为 `1.4`；
+- [ ] Test Context Schema Version 为 `1.2`；
 - [ ] Readiness Schema Version 为 `1.0`；
 - [ ] Report Schema Version 为 `1.3`；
 - [ ] 每条 Case 都有原始 `source_refs`；
 - [ ] 每个必需 Assertion 都有精确 Expected；
 - [ ] `observe_via` 与执行通道一致；
 - [ ] Secret 没有进入 JSON、Markdown、截图或日志；
+- [ ] Secret Resolver 已生成 Runtime Context，必需 Secret 状态为 `resolved`；
 - [ ] Provision 完成后执行了 verification；
 - [ ] 只有已验证 Provision 写入 Runtime Context；
 - [ ] 只执行 Reflight 为 READY 的 Case；

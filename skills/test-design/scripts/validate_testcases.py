@@ -80,6 +80,14 @@ def semantic_errors(data: dict) -> list[str]:
                 semantic.append(f"{cid}: NEEDS_CLARIFICATION requires open_question_refs")
 
         requirements = case.get("execution_requirements", {})
+        secret_names: set[str] = set()
+        for secret in requirements.get("secret_requirements", []):
+            name = secret.get("name")
+            if name in secret_names:
+                semantic.append(f"{cid}: duplicate secret requirement: {name}")
+            if isinstance(name, str):
+                secret_names.add(name)
+
         required_capabilities = set(requirements.get("capabilities", []))
         channels = set(case.get("execution_channels", []))
         missing_caps = sorted(channels - required_capabilities)

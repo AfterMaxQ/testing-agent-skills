@@ -63,7 +63,7 @@ def main() -> int:
         return 1
 
     available = {k: set(context["available"].get(k, [])) for k in CATEGORIES}
-    runtime_env = {name for name in os.environ if os.environ.get(name) is not None}
+    runtime_env = {name for name, value in os.environ.items() if value and value.strip()}
     # Environment variables may be declared in context or be present in the actual runtime.
     available["env_vars"] |= runtime_env
 
@@ -71,6 +71,24 @@ def main() -> int:
     for p in context.get("provisioners", []):
         for item in p.get("provides", []):
             providers_by_item[(item["category"], item["name"])].append(p)
+
+    runtime_secrets = {
+        item["name"]: item for item in context.get("runtime_secrets", [])
+    }
+
+    def unresolved_provisioner_secrets(provisioner: dict) -> list[str]:
+        unresolved = []
+        for secret in provisioner.get("secret_requirements", []):
+            if not secret.get("required", False):
+                continue
+            metadata = runtime_secrets.get(secret["name"])
+            env_key = metadata.get("env_key") if metadata else None
+            if not metadata or metadata.get("status") != "resolved" or not env_key:
+                unresolved.append(secret["name"])
+                continue
+            if not os.environ.get(env_key, "").strip():
+                unresolved.append(secret["name"])
+        return unresolved
 
     case_rows = []
     gap_aggregate: dict[tuple[str, str, str], dict] = {}
@@ -89,6 +107,36 @@ def main() -> int:
             status = "NEEDS_CLARIFICATION"
         else:
             reqs = case["execution_requirements"]
+            for secret in reqs.get("secret_requirements", []):
+                name = secret["name"]
+                metadata = runtime_secrets.get(name)
+                env_key = metadata.get("env_key") if metadata else None
+                injected = bool(env_key and os.environ.get(env_key, "").strip())
+                resolved = bool(metadata and metadata.get("status") == "resolved" and injected)
+                if resolved:
+                    continue
+
+                if not secret.get("required", False):
+                    if metadata:
+                        notes.append(
+                            f"可选 Secret {name} 未在当前子进程解析："
+                            f"{metadata.get('status', 'missing')}"
+                        )
+                    else:
+                        notes.append(f"可选 Secret {name} 未提供 Runtime Context 元数据")
+                    continue
+
+                if metadata and metadata.get("status") == "resolved" and not injected:
+                    reason = f"Secret 已标记 resolved，但环境变量 {env_key} 未注入当前子进程"
+                elif metadata:
+                    reason = metadata.get("reason") or f"Secret 当前状态为 {metadata.get('status', 'missing')}"
+                else:
+                    reason = "未找到 Runtime Context 中的 Secret 解析元数据"
+                gaps.append({
+                    "category": "secret_requirements", "name": name,
+                    "resolution": "BLOCKED", "provisioner_ids": [], "reason": reason,
+                })
+
             for category in CATEGORIES:
                 for name in reqs.get(category, []):
                     if name in available[category]:
@@ -97,12 +145,15 @@ def main() -> int:
                     auto = []
                     manual = []
                     unavailable_env = []
+                    unavailable_secret = []
                     for p in candidates:
                         missing_env = [e for e in p.get("requires_env", []) if e not in runtime_env]
                         if p["kind"] == "manual":
                             manual.append(p)
                         elif missing_env:
                             unavailable_env.append((p, missing_env))
+                        elif (missing_secret := unresolved_provisioner_secrets(p)):
+                            unavailable_secret.append((p, missing_secret))
                         else:
                             auto.append(p)
                     if auto:
@@ -118,6 +169,9 @@ def main() -> int:
                         elif unavailable_env:
                             names = sorted({e for _, envs in unavailable_env for e in envs})
                             reason = "存在 provisioner，但缺少其运行所需环境变量：" + ", ".join(names)
+                        elif unavailable_secret:
+                            names = sorted({name for _, secrets in unavailable_secret for name in secrets})
+                            reason = "存在 provisioner，但缺少其必需 Secret：" + ", ".join(names)
                         else:
                             reason = "当前环境未提供该条件，且没有可用 provisioner"
                         gaps.append({
