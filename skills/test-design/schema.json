@@ -1,0 +1,330 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/testing-agent-skills/test-suite.schema.json",
+  "title": "测试套件",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite_id",
+    "feature",
+    "source_documents",
+    "open_questions",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.2"
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "feature": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_documents": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "source_refs",
+          "question",
+          "impact"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "channel": {
+      "enum": [
+        "browser",
+        "api",
+        "log_trace",
+        "static_inspection"
+      ]
+    },
+    "requirementCategory": {
+      "enum": [
+        "capabilities",
+        "auth_roles",
+        "test_data",
+        "observability",
+        "fault_injection",
+        "permissions",
+        "env_vars"
+      ]
+    },
+    "evidenceSource": {
+      "enum": [
+        "browser_dom",
+        "browser_url",
+        "browser_network",
+        "api_response",
+        "sse",
+        "log",
+        "trace",
+        "file",
+        "source_code",
+        "screenshot",
+        "human"
+      ]
+    },
+    "executionRequirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "auth_roles",
+        "test_data",
+        "observability",
+        "fault_injection",
+        "permissions",
+        "env_vars"
+      ],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/channel"
+          }
+        },
+        "auth_roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "test_data": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observability": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidenceSource"
+          }
+        },
+        "fault_injection": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "env_vars": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "expected",
+        "observe_via",
+        "required"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected": {
+          "type": "string",
+          "minLength": 1
+        },
+        "observe_via": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidenceSource"
+          }
+        },
+        "required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "title",
+        "source_refs",
+        "objective",
+        "design_status",
+        "priority",
+        "execution_channels",
+        "preconditions",
+        "execution_requirements",
+        "test_data",
+        "steps",
+        "assertions",
+        "cleanup"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "objective": {
+          "type": "string",
+          "minLength": 1
+        },
+        "design_status": {
+          "enum": [
+            "READY",
+            "NEEDS_CLARIFICATION"
+          ]
+        },
+        "priority": {
+          "enum": [
+            "P0",
+            "P1",
+            "P2"
+          ]
+        },
+        "execution_channels": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/channel"
+          }
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "execution_requirements": {
+          "$ref": "#/$defs/executionRequirements"
+        },
+        "test_data": {
+          "type": "object"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/assertion"
+          }
+        },
+        "cleanup": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ambiguity_note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

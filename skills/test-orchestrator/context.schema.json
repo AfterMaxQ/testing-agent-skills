@@ -1,0 +1,229 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/testing-agent-skills/test-context.schema.json",
+  "title": "测试运行上下文",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "context_id",
+    "environment",
+    "available",
+    "provisioners"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "base_url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "available": {
+      "$ref": "#/$defs/availability"
+    },
+    "provisioners": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provisioner"
+      }
+    }
+  },
+  "$defs": {
+    "category": {
+      "enum": [
+        "capabilities",
+        "auth_roles",
+        "test_data",
+        "observability",
+        "fault_injection",
+        "permissions",
+        "env_vars"
+      ]
+    },
+    "availability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "auth_roles",
+        "test_data",
+        "observability",
+        "fault_injection",
+        "permissions",
+        "env_vars"
+      ],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "browser",
+              "api",
+              "log_trace",
+              "static_inspection"
+            ]
+          }
+        },
+        "auth_roles": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "test_data": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observability": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "browser_dom",
+              "browser_url",
+              "browser_network",
+              "api_response",
+              "sse",
+              "log",
+              "trace",
+              "file",
+              "source_code",
+              "screenshot",
+              "human"
+            ]
+          }
+        },
+        "fault_injection": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "permissions": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "env_vars": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "providedItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "name"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "provisioner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "provides",
+        "action",
+        "requires_env"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "kind": {
+          "enum": [
+            "command",
+            "playwright",
+            "api",
+            "manual"
+          ]
+        },
+        "provides": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/providedItem"
+          }
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cleanup_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "requires_env": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

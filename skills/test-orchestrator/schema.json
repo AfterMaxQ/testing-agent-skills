@@ -1,0 +1,215 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/testing-agent-skills/test-report.schema.json",
+  "title": "测试执行报告",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite_id",
+    "context_id",
+    "summary",
+    "case_results"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.2"
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "passed",
+        "failed",
+        "blocked",
+        "not_executed"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_executed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "case_results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/caseResult"
+      }
+    }
+  },
+  "$defs": {
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "name",
+        "reason"
+      ],
+      "properties": {
+        "category": {
+          "enum": [
+            "capabilities",
+            "auth_roles",
+            "test_data",
+            "observability",
+            "fault_injection",
+            "permissions",
+            "env_vars",
+            "requirement_clarification",
+            "provision_failure"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "summary"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "browser_dom",
+            "browser_url",
+            "browser_network",
+            "api_response",
+            "sse",
+            "log",
+            "trace",
+            "file",
+            "source_code",
+            "screenshot",
+            "human"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_path": {
+          "type": "string"
+        }
+      }
+    },
+    "actual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assertion_id",
+        "status",
+        "observed",
+        "evidence"
+      ],
+      "properties": {
+        "assertion_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "BLOCKED",
+            "NOT_EXECUTED"
+          ]
+        },
+        "observed": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "caseResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "status",
+        "actuals",
+        "blockers",
+        "failure_description",
+        "notes"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "BLOCKED",
+            "NOT_EXECUTED"
+          ]
+        },
+        "actuals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/actual"
+          }
+        },
+        "blockers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/blocker"
+          }
+        },
+        "failure_description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

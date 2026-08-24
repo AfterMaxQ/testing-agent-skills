@@ -7,80 +7,107 @@ Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责�
 ## 1. 架构
 
 ```text
-Requirement / PRD
-        |
-        v
- test-design
-        |
-        v
-   Test Suite
-        |
-        v
-execution_requirements
-        |
-        v
- test-orchestrator
-        |
-  +-----+-----+--------+
-  |           |        |
-Browser      API   Log/Trace
-  |
-  v
-Playwright CLI
-        |
-        v
- Evidence
-        |
-        v
- PASS / FAIL / BLOCKED
-        |
-        v
- Unified Report
+                         Requirement / PRD
+                                │
+                                ▼
+                       ┌─────────────────┐
+                       │   test-design   │
+                       │   需求级测试设计  │
+                       └────────┬────────┘
+                                │ Test Suite
+                                ▼
+                     execution_requirements
+                                │
+                                ▼
+                         ┌──────────────┐
+                         │ Test Context │
+                         │ 当前环境能力  │
+                         └──────┬───────┘
+                                │
+                                ▼
+                    ┌────────────────────────┐
+                    │   test-orchestrator    │
+                    │ Preflight / Provision  │
+                    └───────────┬────────────┘
+                                │
+                      Ready / Provisioned
+                                │
+              ┌─────────────────┼──────────────────┐
+              │                 │                  │
+              ▼                 ▼                  ▼
+          browser             api          log_trace / static
+              │                 │                  │
+              ▼                 │                  │
+      ┌─────────────────┐       │                  │
+      │ playwright-cli  │       │                  │
+      │ 官方 Browser Skill│      │                  │
+      └────────┬────────┘       │                  │
+               └────────────────┼──────────────────┘
+                                │
+                                ▼
+                         Actual Evidence
+                                │
+                                ▼
+                       PASS / FAIL / BLOCKED
+                                │
+                                ▼
+                         Unified Report
 ```
 
 模块职责：
 
 | 模块 | 负责 |
 |---|---|
-| `test-design` | 需求拆解、测试场景、断言、证据入口、执行通道、运行条件、需求追溯 |
-| `test-orchestrator` | Preflight、环境准备、执行路由、Evidence 汇总、结果判断、报告生成 |
-| `playwright-cli` | Browser 探索、Seed/Fixture、Playwright Test、Network Mock、Trace、Screenshot |
+| `test-design` | 需求拆解、场景、断言、证据入口、执行通道、运行条件、需求追溯 |
+| `test-orchestrator` | Preflight、环境准备、执行路由、Evidence 汇总、PASS/FAIL/BLOCKED、报告 |
+| `playwright-cli` | Browser 探索、Seed/Fixture、Locator、Playwright Test、Network Mock、Trace、Screenshot |
 
 ## 2. 数据流
 
 ```text
 需求文档
-   |
-   v
-test-design
-   |
-   v
-Test Cases
-   |
-   v
-Preflight
-   |
- +---------+-------------+
- |         |             |
-READY  PROVISIONABLE  BLOCKED
- |         |
- |     Provision
- |         |
- +----+----+
-      |
-      v
- Execute Tests
-      |
-      v
- Evidence Collection
-      |
-      v
- Test Report
+  │
+  │ test-design
+  ▼
+test-cases.json
+  │
+  │ 声明每个 Case 的 execution_requirements
+  ▼
+test-context.json ───────────────┐
+  │                              │
+  └──────────────┬───────────────┘
+                 ▼
+              Preflight
+                 │
+       ┌─────────┼─────────┐
+       ▼         ▼         ▼
+     READY  PROVISIONABLE BLOCKED
+       │         │
+       │      Provision
+       │         │
+       └────┬────┘
+            ▼
+          Execute
+            │
+    ┌───────┼──────────────┐
+    ▼       ▼              ▼
+ Browser   API       Log/Trace / Static
+    │
+    ▼
+playwright-cli
+    │
+    └──────────────► Evidence
+                       │
+                       ▼
+                   report.json
+                       │
+                       ▼
+                 test-report.md
 ```
 
-### Test Suite 与运行环境
+### 2.1 Test Suite 声明运行条件
 
-每条 Case 通过 `execution_requirements` 声明执行需要的条件：
+`test-design` 不假设测试环境一定具备账号、数据、日志或权限。每条 Case 用 `execution_requirements` 明确声明：
 
 ```json
 {
@@ -88,53 +115,100 @@ READY  PROVISIONABLE  BLOCKED
   "auth_roles": ["normal_user"],
   "test_data": ["long_text_fixture"],
   "observability": ["browser_dom", "log"],
-  "permissions": ["logs:verify-service"]
+  "fault_injection": ["web_search_timeout"],
+  "permissions": ["logs:verify-service"],
+  "env_vars": []
 }
 ```
 
-Test Context 描述当前环境能力，包括：
+这描述“Case 需要什么”，不保存密码、Token 或临时 Session。
 
-- 可用账号和权限
-- 测试数据
-- 日志和 Trace 能力
-- 故障注入能力
-- 自动准备 Provisioner
+### 2.2 Test Context 描述当前环境
 
-Preflight 会判断：
+`test-context.json` 描述“现在有什么”和“缺少时怎样准备”：
 
-- `READY`：当前环境可以执行；
-- `PROVISIONABLE`：存在自动准备方式；
-- `BLOCKED`：当前无法满足且没有准备路径；
-- `NEEDS_CLARIFICATION`：需求仍需确认。
-
-## 3. Browser 测试
-
-Browser Case 不负责重复实现 Playwright 能力。
-
-执行流程：
-
-```text
-Browser Case
-      |
-      v
-Seed / Fixture
-      |
-      v
-Planning
-      |
-      v
-Playwright Test
-      |
-      v
-Run
-      |
-      v
-DOM / URL / Network / Trace Evidence
+```json
+{
+  "schema_version": "1.0",
+  "context_id": "staging",
+  "environment": {
+    "name": "staging",
+    "base_url": "https://staging.example.com",
+    "notes": []
+  },
+  "available": {
+    "capabilities": ["browser", "api", "log_trace"],
+    "auth_roles": [],
+    "test_data": [],
+    "observability": ["browser_dom", "browser_network", "trace", "log"],
+    "fault_injection": [],
+    "permissions": ["logs:verify-service"],
+    "env_vars": []
+  },
+  "provisioners": [
+    {
+      "id": "prepare-normal-user",
+      "kind": "playwright",
+      "provides": [{"category": "auth_roles", "name": "normal_user"}],
+      "action": "登录测试账号并保存 Playwright storage state",
+      "cleanup_action": null,
+      "requires_env": ["TEST_USER_PASSWORD"],
+      "notes": []
+    }
+  ]
+}
 ```
 
-Trace、Network、Request Mock、Storage State 等能力优先使用 Playwright 官方能力。
+敏感值通过环境变量或 Secret Manager 注入，不写入 Test Context。
 
-## 4. 使用示例
+### 2.3 Preflight 与 Provision
+
+先执行：
+
+```bash
+python skills/test-design/scripts/validate_testcases.py test-cases.json
+python skills/test-orchestrator/scripts/validate_context.py test-context.json
+python skills/test-orchestrator/scripts/preflight.py test-cases.json test-context.json --out readiness.json
+python skills/test-orchestrator/scripts/render_readiness.py readiness.json --out readiness.md
+```
+
+Preflight 将每条 Case 分为：
+
+- `READY`：当前可直接执行；
+- `PROVISIONABLE`：有缺失条件，但存在可自动执行的 Provisioner；
+- `BLOCKED`：当前缺失且没有自动解决路径；
+- `NEEDS_CLARIFICATION`：需求本身仍待澄清。
+
+`readiness.md` 会按缺失条件聚合受影响 Case，便于一次补齐账号、权限、日志入口或测试数据。
+
+对 `PROVISIONABLE` Case，`test-orchestrator` 执行 Test Context 中受信任的 Provisioner，然后重新运行 Preflight。只有 Provision 后仍不满足运行条件，Case 才进入 `BLOCKED`。
+
+### 2.4 Browser Case
+
+Browser Case 由 `playwright-cli` 负责页面层具体化：
+
+```text
+需求级 Browser Case
+        │
+        ▼
+Seed / Fixture
+        │
+        ▼
+Planning
+        │
+        ▼
+Locator / Playwright Test
+        │
+        ▼
+Run
+        │
+        ▼
+DOM / URL / Network / Trace / Screenshot
+```
+
+Browser 自带的 Trace、Network、Request Mock、Storage State 等能力优先直接使用 Playwright，不作为外部环境缺失项处理。
+
+## 3. 使用示例
 
 需求：
 
@@ -142,62 +216,88 @@ Trace、Network、Request Mock、Storage State 等能力优先使用 Playwright 
 AC-022：长文本核实时，段落并发数固定为 3。
 ```
 
-生成测试 Case：
+### 3.1 生成 Case
 
-```text
-目标：验证长文本处理过程中并发数固定为 3
+`test-design` 生成的 Case 重点是“如何证明并发为 3”，而不是页面按钮怎么点：
 
-执行通道：
-- browser
-- log_trace
-
-需要：
-- normal_user 账号
-- long_text_fixture 数据
-- 服务日志读取权限
-
-断言：
-日志中存在并发数为 3 的证据
+```json
+{
+  "id": "F005-AC022-001",
+  "title": "长文本核实固定三段并发",
+  "source_refs": ["AC-022"],
+  "objective": "验证长文本段落处理并发数固定为 3",
+  "design_status": "READY",
+  "priority": "P0",
+  "execution_channels": ["browser", "log_trace"],
+  "preconditions": ["测试环境可访问"],
+  "execution_requirements": {
+    "capabilities": ["browser", "log_trace"],
+    "auth_roles": ["normal_user"],
+    "test_data": ["long_text_fixture"],
+    "observability": ["browser_dom", "log"],
+    "fault_injection": [],
+    "permissions": ["logs:verify-service"],
+    "env_vars": []
+  },
+  "test_data": {"fixture": "long_text_fixture"},
+  "steps": ["提交长文本核实", "等待处理完成"],
+  "assertions": [
+    {
+      "id": "A1",
+      "expected": "段落处理并发数固定为 3",
+      "observe_via": ["log"],
+      "required": true
+    }
+  ],
+  "cleanup": []
+}
 ```
 
-执行流程：
+### 3.2 Preflight
+
+如果当前环境有 Browser，但没有服务日志权限，Preflight 不直接执行 Case，而是在 `readiness.md` 中集中列出：
 
 ```text
-Test Suite
-    |
-    v
-Preflight 检查环境
-    |
-    +-- 缺少日志权限
-    |       |
-    |       v
-    |   查找 Provisioner
-    |
-    v
-Playwright 执行业务流程
-    |
-    v
-收集日志和页面证据
-    |
-    v
-生成 PASS / FAIL / BLOCKED 报告
+logs:verify-service — BLOCKED
+影响 Case：F005-AC022-001、F005-AC025-001、F005-AC035-001
+原因：当前环境未提供该权限，且没有可用 Provisioner
 ```
 
-## 5. 安装
+如果 Test Context 中存在日志权限 Provisioner，则状态为 `PROVISIONABLE`，先完成环境准备再执行。
 
-运行环境需要安装 Playwright CLI：
+### 3.3 执行与报告
+
+环境就绪后：
+
+1. Playwright 执行页面主流程；
+2. `log_trace` 通道读取对应运行日志；
+3. A1 的 Actual 与 Expected 比较；
+4. 有证据证明并发数为 3 → `PASS`；
+5. 证据显示并发数不是 3 → `FAIL`；
+6. Provision 后仍无法读取日志 → `BLOCKED`，并在报告中记录结构化 blocker。
+
+最终：
 
 ```bash
-npm install -g @playwright/cli
+python skills/test-orchestrator/scripts/validate_report.py report.json --suite test-cases.json --context test-context.json
+python skills/test-orchestrator/scripts/render_report.py report.json --suite test-cases.json --out test-report.md
 ```
 
-Python 校验脚本依赖：
+## 4. 安装
+
+包内包含 Microsoft 官方 `playwright-cli` Skill；运行环境仍需安装 CLI：
+
+```bash
+npm install -g @playwright/cli@0.1.18
+```
+
+Python 校验脚本需要：
 
 ```bash
 pip install jsonschema
 ```
 
-## 6. 目录
+## 5. 目录
 
 ```text
 testing-agent-skills/
@@ -207,7 +307,15 @@ testing-agent-skills/
 │   └── implementation-plan.md
 ├── skills/
 │   ├── test-design/
+│   │   ├── SKILL.md
+│   │   ├── schema.json
+│   │   └── scripts/validate_testcases.py
 │   ├── test-orchestrator/
+│   │   ├── SKILL.md
+│   │   ├── schema.json
+│   │   ├── context.schema.json
+│   │   ├── readiness.schema.json
+│   │   └── scripts/
 │   └── playwright-cli/
 └── licenses/
 ```

@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/testing-agent-skills/readiness.schema.json",
+  "title": "测试就绪检查报告",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite_id",
+    "context_id",
+    "summary",
+    "case_readiness",
+    "aggregated_gaps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "suite_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "ready",
+        "provisionable",
+        "blocked",
+        "needs_clarification"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "ready": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "provisionable": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "needs_clarification": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "case_readiness": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/caseReadiness"
+      }
+    },
+    "aggregated_gaps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/aggregatedGap"
+      }
+    }
+  },
+  "$defs": {
+    "category": {
+      "enum": [
+        "capabilities",
+        "auth_roles",
+        "test_data",
+        "observability",
+        "fault_injection",
+        "permissions",
+        "env_vars",
+        "requirement_clarification"
+      ]
+    },
+    "gap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "name",
+        "resolution",
+        "provisioner_ids",
+        "reason"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "enum": [
+            "PROVISIONABLE",
+            "BLOCKED",
+            "CLARIFY"
+          ]
+        },
+        "provisioner_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "caseReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "status",
+        "gaps",
+        "notes"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "enum": [
+            "READY",
+            "PROVISIONABLE",
+            "BLOCKED",
+            "NEEDS_CLARIFICATION"
+          ]
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/gap"
+          }
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "aggregatedGap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "name",
+        "resolution",
+        "affected_case_ids",
+        "provisioner_ids",
+        "reason"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/category"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resolution": {
+          "enum": [
+            "PROVISIONABLE",
+            "BLOCKED",
+            "CLARIFY"
+          ]
+        },
+        "affected_case_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "provisioner_ids": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
