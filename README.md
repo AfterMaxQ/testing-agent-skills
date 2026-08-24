@@ -6,53 +6,7 @@ Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责�
 
 ## 1. 架构
 
-```text
-                         Requirement / PRD
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │   test-design   │
-                       │   需求级测试设计  │
-                       └────────┬────────┘
-                                │ Test Suite
-                                ▼
-                     execution_requirements
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │ Test Context │
-                         │ 当前环境能力  │
-                         └──────┬───────┘
-                                │
-                                ▼
-                    ┌────────────────────────┐
-                    │   test-orchestrator    │
-                    │ Preflight / Provision  │
-                    └───────────┬────────────┘
-                                │
-                      Ready / Provisioned
-                                │
-              ┌─────────────────┼──────────────────┐
-              │                 │                  │
-              ▼                 ▼                  ▼
-          browser             api          log_trace / static
-              │                 │                  │
-              ▼                 │                  │
-      ┌─────────────────┐       │                  │
-      │ playwright-cli  │       │                  │
-      │ 官方 Browser Skill│      │                  │
-      └────────┬────────┘       │                  │
-               └────────────────┼──────────────────┘
-                                │
-                                ▼
-                         Actual Evidence
-                                │
-                                ▼
-                       PASS / FAIL / BLOCKED
-                                │
-                                ▼
-                         Unified Report
-```
+![整体架构](assets/architecture.webp)
 
 模块职责：
 
@@ -64,46 +18,7 @@ Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责�
 
 ## 2. 数据流
 
-```text
-需求文档
-  │
-  │ test-design
-  ▼
-test-cases.json
-  │
-  │ 声明每个 Case 的 execution_requirements
-  ▼
-test-context.json ───────────────┐
-  │                              │
-  └──────────────┬───────────────┘
-                 ▼
-              Preflight
-                 │
-       ┌─────────┼─────────┐
-       ▼         ▼         ▼
-     READY  PROVISIONABLE BLOCKED
-       │         │
-       │      Provision
-       │         │
-       └────┬────┘
-            ▼
-          Execute
-            │
-    ┌───────┼──────────────┐
-    ▼       ▼              ▼
- Browser   API       Log/Trace / Static
-    │
-    ▼
-playwright-cli
-    │
-    └──────────────► Evidence
-                       │
-                       ▼
-                   report.json
-                       │
-                       ▼
-                 test-report.md
-```
+![数据流](assets/data-flow.webp)
 
 ### 2.1 Test Suite 声明运行条件
 
@@ -302,6 +217,9 @@ pip install jsonschema
 ```text
 testing-agent-skills/
 ├── README.md
+├── assets/
+│   ├── architecture.webp
+│   └── data-flow.webp
 ├── docs/
 │   ├── architecture.md
 │   └── implementation-plan.md
