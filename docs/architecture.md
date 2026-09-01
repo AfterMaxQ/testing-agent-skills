@@ -3,28 +3,54 @@
 ## 1. 总体链路
 
 ```text
-Requirement / PRD
-       ↓
-test-design
-       ↓
-Test Suite + execution_requirements
-       ↓
-Test Context + Secret Schema
-       ↓
-Secret Resolver
-       ↓
-Preflight → Provision → Runtime Context → Reflight
-       ↓
-Browser / API / Log-Trace / Static Inspection
-       ↓
-Actual Evidence
-       ↓
-Report → Cleanup
+运行中的网页 → requirement-discovery → requirements.md ┐
+                                                     ├→ test-design
+Requirement / PRD ───────────────────────────────────┘
+                                                          ↓
+                                             Test Suite + execution_requirements
+                                                          ↓
+                                             Test Context + Secret Schema
+                                                          ↓
+                                                   Secret Resolver
+                                                          ↓
+                                  Preflight → Provision → Runtime Context → Reflight
+                                                          ↓
+                                  Browser / API / Log-Trace / Static Inspection
+                                                          ↓
+                                                   Actual Evidence
+                                                          ↓
+                                                  Report → Cleanup
 ```
 
-需求层定义“要证明什么”和“需要什么条件”；运行层确认条件是否真实可用；执行层取得实际行为证据；报告层统一汇总状态和产物。
+`requirement-discovery` 是可选前置入口；已有正式 Requirement / PRD 时可以直接从 `test-design` 开始。需求层定义“要证明什么”和“需要什么条件”；运行层确认条件是否真实可用；执行层取得实际行为证据；报告层统一汇总状态和产物。
 
-## 2. Test Suite
+## 2. Requirement Discovery
+
+`skills/requirement-discovery/SKILL.md` 是独立 Skill，只负责从当前运行中的 Web 页面提取候选需求。
+
+固定方向：
+
+```text
+运行中的网页
+  ↓
+DOM / Accessibility 主观察
+  +
+Vision 补充
+  +
+少量安全交互
+  ↓
+Evidence → Fact
+  ↓
+REQ / INF / Q
+  ↓
+requirements.md
+```
+
+Browser 操作直接复用现有 `playwright-cli`。`requirement-discovery` 不生成 Test Case、Locator 或 Playwright Test，也不进入 `test-orchestrator` 的 Preflight / Provision / Report 状态机。
+
+`requirements.md` 是普通 Markdown，可人工修改，也可继续交给 `test-design`。该能力不新增公共 JSON Schema，因此不属于 Test Suite、Test Context、Readiness、Report 四类公开 JSON 契约。
+
+## 3. Test Suite
 
 `test-design` 生成结构化 Test Suite。每条 Case 包含需求追溯、业务步骤、断言、执行通道、Evidence 入口和 `execution_requirements`。
 
@@ -41,7 +67,7 @@ Report → Cleanup
 
 Secret 值、Cookie、Session 和完整 Token 不进入 Test Suite。
 
-## 3. Test Context
+## 4. Test Context
 
 Test Context 是当前运行环境契约：
 
@@ -65,7 +91,7 @@ Runtime Context 是当前运行的 Context 副本，`runtime_secrets` 只记录�
 
 Secret 值只存在于 Resolver 进程和它启动的子进程环境。
 
-## 4. Secret Resolver
+## 5. Secret Resolver
 
 `skills/test-orchestrator/secret.schema.json` 是 Secret 定义清单，描述业务名称到 `env_key` 的映射、类型、敏感等级、允许来源和生命周期策略。
 
@@ -94,7 +120,7 @@ python skills/test-orchestrator/scripts/resolve_secret.py \
 
 必需 Secret 状态不是 `resolved` 时，Resolver 返回非零退出码且不启动 `--exec`。Manual Input 通过 `--allow-manual` 明确启用，输入值只在本次进程树中存在。`persist` 只记录策略元数据，Resolver 不自动写回 Secret Store。
 
-## 5. Preflight
+## 6. Preflight
 
 Preflight 先校验 Suite 和 Context，再对每条 Case 执行集合匹配：
 
@@ -113,7 +139,7 @@ execution_requirements ⊆ available
 
 Readiness 按缺口聚合受影响 Case 和 Provisioner。`secret_requirements` 是独立缺口分类，Secret 缺失不会被伪装为普通环境变量缺失。
 
-## 6. Provision
+## 7. Provision
 
 Provisioner 由 Test Context 定义，分为：
 
@@ -124,7 +150,7 @@ Provisioner 由 Test Context 定义，分为：
 
 自动 Provision 的顺序是：检查 `requires_env`、执行 `action`、执行 `verification`、保存直接 Evidence、成功后把 `provides` 写入 Runtime Context。Provision 失败写入 `provision_failure` blocker，不改变产品 Case 的 FAIL 语义。Cleanup 只针对本次成功创建且声明了 `cleanup_action` 的资源，并按成功顺序逆序执行。
 
-## 7. 执行通道
+## 8. 执行通道
 
 四类通道统一返回 `Assertion ID`、`Status`、`Observed`、`Evidence[]` 和必要的 `Blocker`。
 
@@ -146,7 +172,7 @@ Provisioner 由 Test Context 定义，分为：
 
 通道 Adapter 是 Orchestrator 的工具中立执行规则，不创建插件注册表或独立服务。
 
-## 8. Report 与状态
+## 9. Report 与状态
 
 Report 精确覆盖 Suite 中的每个 Case，并校验 Case/Assertion 唯一性、Evidence 类型、Summary 一致性、Provision/Cleanup 记录和产物路径。
 
@@ -159,7 +185,9 @@ Assertion 状态：
 
 Case 聚合顺序为 FAIL、BLOCKED、NOT_EXECUTED、PASS。需求未澄清的 Case 使用 `requirement_clarification` blocker；Secret 缺失使用 `secret_requirements` blocker。报告不包含根因推测、修复建议或 Secret 值。
 
-## 9. 公开契约
+## 10. 公开契约
+
+`requirement-discovery` 的 `requirements.md` 不是公共 JSON 契约。现有公开 JSON 契约保持不变：
 
 - `skills/test-design/schema.json`：Test Suite；
 - `skills/test-orchestrator/context.schema.json`：Test Context 和 Runtime Context；
