@@ -14,7 +14,7 @@
 → optional requirements.md
 ```
 
-## 1. 四个 Skill
+## 1. Skill 分工
 
 | Skill | 负责什么 | 不负责什么 |
 |---|---|---|
@@ -52,7 +52,21 @@ skills/playwright-cli/SKILL.md
 请直接按照 exploratory-testing Skill 自主完成探索式测试。
 ```
 
-URL-only 不先生成 Test Suite，也不调用 `test-orchestrator`。没有正式 Expected 时使用：
+主要流程：
+
+```text
+Initial Observation
+→ Feature Inventory
+→ Application Map
+→ Exploration Planner
+→ Exploration Missions
+→ Before / Action / After / Delta
+→ Confirmation Probe
+→ Coverage Gate
+→ exploration-report.md
+```
+
+Finding：
 
 ```text
 CONFIRMED_BEHAVIOR
@@ -97,11 +111,18 @@ Requirement / PRD
 → test-report.md
 ```
 
-Test Suite 当前版本为 `1.4`，Test Context 为 `1.2`，Readiness 为 `1.0`，Report 为 `1.3`。
+契约版本：
 
-## 5. Secret 模板与本地运行目录
+```text
+Test Suite   1.4
+Test Context 1.2
+Readiness    1.0
+Report       1.3
+```
 
-Secret 模板已经迁移到：
+## 5. Secret 模板与本地目录
+
+模板位置：
 
 ```text
 skills/test-orchestrator/examples/
@@ -109,9 +130,7 @@ skills/test-orchestrator/examples/
 └── secrets.env.example
 ```
 
-仓库中**不再保留 `.testing-agent/` 模板目录**。
-
-`.testing-agent/` 现在只表示用户本地的运行时目录。需要文件型 Secret Store 时，在目标项目根目录自行创建：
+本地运行目录：
 
 ```text
 .testing-agent/
@@ -120,6 +139,8 @@ skills/test-orchestrator/examples/
 └── runtime/
     └── secrets.env
 ```
+
+`.testing-agent/` 已被 `.gitignore` 忽略。
 
 ### Linux / macOS
 
@@ -137,7 +158,7 @@ Copy-Item skills/test-orchestrator/examples/config.example.json .testing-agent/c
 Copy-Item skills/test-orchestrator/examples/secrets.env.example .testing-agent/secrets.env
 ```
 
-填写真实值时，只改本地 `.testing-agent/secrets.env`：
+填写 `.testing-agent/secrets.env`：
 
 ```dotenv
 TEST_USER_USERNAME=...
@@ -145,17 +166,17 @@ TEST_USER_PASSWORD=...
 API_TOKEN=...
 ```
 
-`.testing-agent/` 整个目录都属于本地运行数据，不应提交到 Git。
-
-如果不想创建文件型 Secret Store，也可以直接通过当前进程环境变量提供值。Resolver 的查找顺序仍为：
+Resolver 默认查找顺序：
 
 ```text
 Runtime Secret Store
 → Local Secret Store
 → 当前进程环境变量
-→ 已声明的外部 Provider
+→ Secret Schema 声明的外部 Provider
 → 显式 Manual Input
 ```
+
+Secret 值不得写入 Suite、Context、Readiness、Report、Markdown、截图或日志。
 
 ## 6. Secret Resolver
 
@@ -167,9 +188,19 @@ python skills/test-orchestrator/scripts/resolve_secret.py \
   --out runtime-context.json
 ```
 
-Secret 值不得写入 Suite、Context、Readiness、Report、Markdown、截图或日志。
+让后续命令继承解析后的 Secret：
 
-## 7. Preflight 与报告
+```bash
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
+  --suite test-cases.json \
+  --context test-context.json \
+  --out runtime-context.json \
+  --exec python skills/test-orchestrator/scripts/preflight.py \
+    test-cases.json runtime-context.json --out readiness.json
+```
+
+## 7. Preflight 与 Report
 
 ```bash
 python skills/test-design/scripts/validate_testcases.py test-cases.json
@@ -178,7 +209,7 @@ python skills/test-orchestrator/scripts/preflight.py \
   test-cases.json runtime-context.json --out readiness.json
 ```
 
-正式 Case 状态：
+Readiness：
 
 ```text
 READY
@@ -196,7 +227,7 @@ python skills/test-orchestrator/scripts/render_report.py report.json \
   --suite test-cases.json --out test-report.md
 ```
 
-正式 Assertion 状态：
+Assertion 状态：
 
 ```text
 PASS
@@ -204,5 +235,3 @@ FAIL
 BLOCKED
 NOT_EXECUTED
 ```
-
-不要把环境缺失、需求不清楚或无法观察的问题伪装成产品 FAIL。
