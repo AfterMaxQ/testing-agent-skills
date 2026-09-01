@@ -152,6 +152,8 @@ Probe：准备怎么操作？
 Observe：重点比较哪些状态关系？
 ```
 
+为本次运行中的 Mission 分配轻量顺序 ID：`M01`、`M02`、`M03`……。Mission ID 只用于报告追溯，不新增 Schema，也不要求持久化状态文件。
+
 Planner 每轮只选择当前信息价值最高的下一 Mission，优先级：
 
 ```text
@@ -231,7 +233,7 @@ Interpret
 在当前上下文维护轻量 Ledger：
 
 ```text
-Area | Mission | Action | Delta | Result
+Mission ID | Area | Lens | Action | Delta | Result
 ```
 
 用途：
@@ -239,9 +241,12 @@ Area | Mission | Action | Delta | Result
 - 防止重复路径；
 - 选择下一 Mission；
 - 计算 Coverage；
+- 让 Coverage 声明能追溯到实际 Mission；
 - 最终输出 Reproduction Path。
 
 不要求额外 JSON / JSONL 文件。
+
+报告中声称某个 Normal / Edge / Combination 已完成时，必须能对应到至少一个真实执行过的 Mission ID。不要在 Coverage 表里写“✓”却没有相应 Mission 或 Evidence。
 
 ## 7. URL-only 的隐式 Oracle
 
@@ -331,11 +336,23 @@ URL-only 模式不直接使用正式测试的 PASS / FAIL。
 
 ### `SUSPECTED_ANOMALY`
 
-存在异常信号，但仍有多个合理业务解释。
+存在异常信号，但仍有多个合理业务解释，并且和目标功能或用户体验有实际关联。
 
 ### `UNKNOWN`
 
 当前证据、权限、安全边界或环境不足以判断。
+
+### Environment / Non-blocking Observation
+
+如果问题明显来自测试环境、第三方资源或辅助资源，并且当前没有观察到它影响目标功能，不要为了增加异常数量把它升级成 `SUSPECTED_ANOMALY`。
+
+例如：
+
+- 第三方字体加载失败，但页面文字正常可读；
+- favicon 404；
+- Analytics / Tracking 请求失败但核心功能正常。
+
+这类内容放入报告的 `Environment / Non-blocking Observations`，除非后续证据证明它确实影响目标功能。
 
 ## 10. Evidence Escalation：先便宜，异常时再加证据
 
@@ -449,6 +466,19 @@ Depth 2：核心功能下一层状态
 
 ## 14. 主要输出：`exploration-report.md`
 
+最终主报告文件名必须严格为：
+
+```text
+exploration-report.md
+```
+
+不得输出为 `exploration-report.m`、`.markdown`、`.txt` 或其他扩展名。写入完成后必须检查：
+
+1. `exploration-report.md` 真实存在；
+2. 文件扩展名严格为 `.md`；
+3. 报告中引用的关键截图相对路径真实存在；
+4. 若文件名或关键资源路径错误，先修正再汇报完成。
+
 推荐结构：
 
 ```markdown
@@ -456,36 +486,92 @@ Depth 2：核心功能下一层状态
 
 **运行状态：COMPLETED | PARTIAL | BLOCKED**
 
-## 1. Application Overview
-## 2. Application Map
-## 3. Confirmed Behaviors
-## 4. Strong Anomalies
-## 5. Suspected Anomalies
-## 6. Unknown / Unsafe Areas
-## 7. Exploration Coverage
-## 8. Reproduction Paths
+## 1. Exploration Summary
+## 2. Application Overview
+## 3. Application Map
+## 4. Confirmed Behaviors
+## 5. Strong Anomalies
+## 6. Suspected Anomalies
+## 7. Environment / Non-blocking Observations
+## 8. Unknown / Unsafe Areas
+## 9. Exploration Coverage
+## 10. Reproduction Paths
 ```
+
+### 14.1 Exploration Summary
+
+报告顶部必须给出一个简洁摘要，至少包含：
+
+```text
+Run Status
+Areas discovered
+High-value Areas
+Missions executed
+Interactions used / max_interactions
+Confirmed Behaviors count
+Strong Anomalies count
+Suspected Anomalies count
+Unknown Areas count
+```
+
+这些数字必须和本轮 Exploration Ledger、Coverage、Findings 一致，不要估算或虚构。
+
+### 14.2 图片与 Evidence 展示
+
+报告是给人阅读的，不要把所有截图都写成普通超链接。
+
+对以下截图优先直接内嵌：
+
+- Application Overview 的 1 张代表性初始截图；
+- 每个 `STRONG_ANOMALY` 至少 1 张最能说明问题的关键截图（如果本轮确实生成了有价值的截图）；
+- `SUSPECTED_ANOMALY` 仅在截图能明显帮助理解时内嵌。
+
+PNG / JPG / JPEG / WebP 使用 Markdown 图片语法：
+
+```markdown
+![搜索不存在关键词后仍显示原结果](artifacts/search-nonexistent.png)
+```
+
+不要写成：
+
+```markdown
+[search-nonexistent.png](artifacts/search-nonexistent.png)
+```
+
+YAML、JSON、Trace、Network dump、日志等非图片 Evidence 继续使用普通 Markdown 链接。
+
+不要把几十张截图全部展开。其余辅助截图可以只保留普通链接，避免报告过长。
+
+所有相对资源路径都应以 `exploration-report.md` 所在目录为基准，并在完成前确认关键图片可以被 Markdown 渲染器找到。
+
+### 14.3 Confirmed Behavior 与 Anomaly
 
 Confirmed Behavior 使用 `BEH-*`。
 
 Anomaly 使用 `ANOM-*`，每条至少包含：
 
 - 现象；
-- 关键 Probe / Reproduction Path；
+- 关键 Mission ID / Probe / Reproduction Path；
 - Before / After 差异；
 - 使用的 Implicit Oracle；
 - Evidence；
 - 分类。
+
+明显环境性、第三方性且当前不影响目标功能的问题放入 `Environment / Non-blocking Observations`，不要和真正业务异常抢占阅读注意力。
+
+### 14.4 Coverage
 
 Coverage 至少包含：
 
 ```markdown
 | Area | Normal | Edge | Combination | Result |
 |---|---|---|---|---|
-| Search | ✓ | ✓ | ✓ | Strong anomaly |
-| Source Filter | ✓ | ✓ | ✓ | Confirmed |
-| Pagination | ✓ | N/A | ✓ | Confirmed |
+| Search | ✓ M03 | ✓ M04 | ✓ M07 | Strong anomaly |
+| Source Filter | ✓ M01 | ✓ M05 | ✓ M07 | Confirmed |
+| Pagination | ✓ M02 | N/A | ✓ M08 | Confirmed |
 ```
+
+Coverage 中的 Mission ID 必须真实存在于本轮 Exploration Ledger。若某 Lens 没有实际执行，不得写 `✓`；使用 `—` 或 `N/A` 并说明原因。
 
 ## 15. 可选导出 `requirements.md`
 
