@@ -1,75 +1,289 @@
 # Testing Agent Skills 架构
 
-## 1. 总体链路
+## 1. 总体架构
+
+Testing Agent Skills 明确分成两种模式。
 
 ```text
-运行中的网页 → requirement-discovery → requirements.md ┐
-                                                     ├→ test-design
-Requirement / PRD ───────────────────────────────────┘
-                                                          ↓
-                                             Test Suite + execution_requirements
-                                                          ↓
-                                             Test Context + Secret Schema
-                                                          ↓
-                                                   Secret Resolver
-                                                          ↓
-                                  Preflight → Provision → Runtime Context → Reflight
-                                                          ↓
-                                  Browser / API / Log-Trace / Static Inspection
-                                                          ↓
-                                                   Actual Evidence
-                                                          ↓
-                                                  Report → Cleanup
+                         User Input
+                            │
+                ┌───────────┴───────────┐
+                ▼                       ▼
+        Formal Requirement             URL only
+                │                       │
+                ▼                       ▼
+          test-design            exploratory-testing
+                │                       │
+                ▼                       ▼
+          Test Suite              Application Map
+                │                       │
+                ▼                       ▼
+       test-orchestrator         Exploration Missions
+                │                       │
+                │                Plan ↔ Explore
+                │                       │
+                ▼                       ▼
+             Evidence                Findings
+                │                       │
+                ▼                       ├─ exploration-report.md
+      PASS / FAIL / BLOCKED            └─ optional requirements.md
 ```
 
-`requirement-discovery` 是可选前置入口；已有正式 Requirement / PRD 时可以直接从 `test-design` 开始。需求层定义“要证明什么”和“需要什么条件”；运行层确认条件是否真实可用；执行层取得实际行为证据；报告层统一汇总状态和产物。
+正式需求模式和 URL-only 模式不在 `test-design` 强制汇合。
 
-## 2. Requirement Discovery
+- 已有 Requirement / PRD / AC：进入正式 Test Suite 流程；
+- 只有 URL、没有明确 Expected：进入 `exploratory-testing`；
+- URL-only 探索结束后，如果人工确认并沉淀出正式需求，才可以再进入 `test-design`。
 
-`skills/requirement-discovery/SKILL.md` 是独立 Skill，只负责从当前运行中的 Web 页面提取候选需求。
+## 2. Exploratory Testing
 
-固定方向：
+`skills/exploratory-testing/SKILL.md` 用于 URL-only、unknown-expected 场景。
+
+它回答：
+
+> 在没有正式需求的情况下，这个运行中的应用有哪些功能、状态关系、未知行为和异常信号？下一步应该探索什么？
+
+核心流程：
 
 ```text
-运行中的网页
-  ↓
-DOM / Accessibility 主观察
-  +
-Vision 补充
-  +
-少量安全交互
-  ↓
-Evidence → Fact
-  ↓
-REQ / INF / Q
-  ↓
-requirements.md
+URL
+↓
+Initial Observation
+↓
+Feature Inventory
+↓
+Application Map
+↓
+Exploration Planner
+↓
+Exploration Missions
+↓
+Execute → Observe → Update Map
+   ↑                 ↓
+   └──── Plan Next ──┘
+            ↓
+       Coverage Gate
+            ↓
+         Findings
+            ↓
+ exploration-report.md
 ```
 
-Browser 操作直接复用现有 `playwright-cli`。`requirement-discovery` 不生成 Test Case、Locator 或 Playwright Test，也不进入 `test-orchestrator` 的 Preflight / Provision / Report 状态机。
+`requirements.md` 只是探索后的可选导出，不是 URL-only 测试的强制中间合同。
 
-`requirements.md` 是普通 Markdown，可人工修改，也可继续交给 `test-design`。该能力不新增公共 JSON Schema，因此不属于 Test Suite、Test Context、Readiness、Report 四类公开 JSON 契约。
+### 2.1 Browser 分工
+
+`exploratory-testing` 负责探索策略，`playwright-cli` 负责浏览器执行。
+
+```text
+exploratory-testing
+→ 为什么探索
+→ 探索什么
+→ 哪个 Area 还没覆盖
+→ 是否需要 Confirmation Probe
+→ 什么时候允许结束
+
+playwright-cli
+→ Open / Snapshot
+→ click / fill / select / press / hover / scroll
+→ DOM / Accessibility
+→ Screenshot / Network / Trace
+→ Browser Session
+```
+
+页面观察优先级：
+
+```text
+Accessibility / Snapshot > Rendered DOM > Raw HTML
+```
+
+Vision 只补充布局、视觉层级、图表 / Canvas / 图片、Modal / Drawer、视觉选中态和 DOM 难解释的变化。
+
+### 2.2 Feature Inventory 与 Application Map
+
+Initial Observation 后先建立 Feature Inventory，不立即自由点击。
+
+每个主要 Area 至少识别：
+
+```text
+Control / Interaction Surface
+Interaction Type
+Stateful?
+Input / Filter?
+Safety
+Priority
+Known Effect
+Unknown Relation
+```
+
+Application Map 关注状态关系，例如：
+
+```text
+Source Filter --changes--> News List
+Source Filter --changes--> Total Pages
+Page Size --changes--> Visible Item Count
+Search --?--> Result State
+```
+
+未知关系会成为后续高优先级 Exploration Mission。
+
+### 2.3 Exploration Mission
+
+未知系统使用动态 Mission，而不是一开始生成正式 Test Case。
+
+Mission 关注：
+
+```text
+Goal
+Why informative
+Target Area / Control
+Probe / Action
+Observed state relation
+```
+
+探索视角只有三个，不创建多 Agent：
+
+```text
+Normal
+Edge
+Combination
+```
+
+Combination 只选择有业务状态依赖的代表组合，禁止笛卡尔积穷举。
+
+### 2.4 执行闭环
+
+每个重大交互固定：
+
+```text
+Before → Action → After → Delta → Interpret
+```
+
+每次重大交互后重新读取相关 DOM / Accessibility 状态，再决定下一 Mission。
+
+内部维护轻量 Exploration Ledger：
+
+```text
+Area | Mission | Action | Delta | Result
+```
+
+Ledger 只用于去重、规划、Coverage 和最终 Reproduction Path，不要求落盘 JSON / JSONL。
+
+### 2.5 Implicit Oracles
+
+URL-only 没有正式 Expected，因此不能凭感觉制造精确断言。
+
+主要 Oracle：
+
+- UI Semantic Oracle；
+- Metamorphic Relation；
+- State Invariant；
+- Cross-feature Consistency；
+- Reversibility；
+- Health Signals；
+- UX Contract（弱 Oracle）。
+
+其中 Metamorphic Relation 是 unknown-expected 场景的核心：通过比较语义明显不同的安全输入之间是否产生合理不同的状态，而不是要求预先知道精确正确结果。
+
+### 2.6 Anomaly 与 Confirmation Probe
+
+一次可疑观察不能直接升级成强异常：
+
+```text
+Suspicious Observation
+→ Confirmation Probe
+→ Re-observe
+→ Finding
+```
+
+Confirmation Probe 优先换输入、路径、组合或恢复稳定状态后重试。
+
+Finding 分类：
+
+- `CONFIRMED_BEHAVIOR`；
+- `STRONG_ANOMALY`；
+- `SUSPECTED_ANOMALY`；
+- `UNKNOWN`。
+
+`STRONG_ANOMALY` 不是正式 Requirement 下的 `FAIL`。
+
+### 2.7 Coverage Gate
+
+默认 Hard Limit：
+
+```text
+max_depth = 2
+max_interactions = 30
+```
+
+Hard Limit 只是预算上限。
+
+正常完成要求：
+
+1. 每个安全 High-value Area 至少 1 个 Normal Mission；
+2. 每个安全 Input / Filter 至少 1 个 Edge Mission；
+3. 存在至少 2 个安全 Stateful Controls 时至少 2 个有意义的 Combination Mission；
+4. 每个 Suspicious Observation 至少 1 个安全 Confirmation Probe，或明确记录无法确认原因。
+
+当前 Area 连续约 3 次安全 Probe 没有新关系、未知信息或异常证据时，只标记 Area Saturated，然后恢复稳定状态并切换未覆盖 Area。
+
+URL-only 运行状态：
+
+- `COMPLETED`：Coverage Gate 满足；
+- `PARTIAL`：预算先耗尽，仍有 Coverage Gap；
+- `BLOCKED`：环境、登录、权限或安全限制阻止关键探索。
+
+### 2.8 输出
+
+主要输出为普通 Markdown：
+
+```text
+exploration-report.md
+```
+
+至少包含：
+
+```text
+Application Overview
+Application Map
+Confirmed Behaviors
+Strong Anomalies
+Suspected Anomalies
+Unknown / Unsafe Areas
+Exploration Coverage
+Reproduction Paths
+```
+
+可选 `requirements.md` 只从 Confirmed Behaviors、UI Semantics 和稳定 State Relations 导出。当前异常行为不能直接写成正式 Requirement。
 
 ## 3. Test Suite
 
-`test-design` 生成结构化 Test Suite。每条 Case 包含需求追溯、业务步骤、断言、执行通道、Evidence 入口和 `execution_requirements`。
+`test-design` 只处理已经存在的正式 Requirement / PRD / AC。
 
-`execution_requirements` 的字段含义：
+每条 Case 包含：
 
-- `capabilities`：`browser`、`api`、`log_trace`、`static_inspection`；
-- `auth_roles`：账号角色，不写账号密码；
-- `test_data`：固定测试数据或待创建资源；
-- `observability`：DOM、Network、Log、Trace 等直接证据入口；
-- `fault_injection`：需求要求的故障模拟；
-- `permissions`：日志、接口、源码等访问权限；
-- `env_vars`：运行时必须存在的环境变量名；
-- `secret_requirements`：Secret 业务名称、必需性和持久化策略。
+- `source_refs`；
+- `objective`、`steps`、`assertions`；
+- `execution_channels`；
+- `execution_requirements`；
+- `open_question_refs`。
+
+`execution_requirements` 包括：
+
+- `capabilities`；
+- `auth_roles`；
+- `test_data`；
+- `observability`；
+- `fault_injection`；
+- `permissions`；
+- `env_vars`；
+- `secret_requirements`。
 
 Secret 值、Cookie、Session 和完整 Token 不进入 Test Suite。
 
 ## 4. Test Context
 
-Test Context 是当前运行环境契约：
+Test Context 描述当前运行环境真实具备的能力。
 
 ```text
 Case requires                         Context provides
@@ -80,55 +294,33 @@ permissions: logs:service    ◄────►   available.permissions
 secret: test_user_password   ◄────►   runtime_secrets
 ```
 
-Context 的 `available` 只列真实具备的能力。`provisioners` 是受信任的环境准备操作，包含 `action`、`verification`、`provides`、`requires_env` 和可选 `cleanup_action`。Secret 需求通过 `secret_requirements` 使用业务名称表达。
-
-Runtime Context 是当前运行的 Context 副本，`runtime_secrets` 只记录：
-
-- 业务名称和注入环境变量名；
-- 来源和解析状态；
-- 持久化策略、解析时间和过期时间；
-- 缺失、不可用或需要人工输入时的原因。
-
-Secret 值只存在于 Resolver 进程和它启动的子进程环境。
+`available` 只列真实具备能力。`provisioners` 是受信任环境准备操作。Runtime Context 是本次运行副本，`runtime_secrets` 只保存来源、状态和生命周期元数据，不保存 Secret 值。
 
 ## 5. Secret Resolver
 
-`skills/test-orchestrator/secret.schema.json` 是 Secret 定义清单，描述业务名称到 `env_key` 的映射、类型、敏感等级、允许来源和生命周期策略。
+`skills/test-orchestrator/secret.schema.json` 描述业务 Secret 名称到 `env_key` 的映射、类型、敏感等级、允许来源和生命周期策略。
 
-来源优先级为：
+来源优先级：
 
 ```text
 Runtime Secret Store
-  → .testing-agent/secrets.env
-  → 当前进程环境变量
-  → 外部 Provider 状态
-  → 显式 Manual Input
+→ .testing-agent/secrets.env
+→ 当前进程环境变量
+→ 外部 Provider 状态
+→ 显式 Manual Input
 ```
 
-默认本地 Secret Store 是 `.testing-agent/secrets.env`，运行时 Secret Store 是 `.testing-agent/runtime/secrets.env`。文件不纳入 Git 追踪，非 Windows 环境读取时自动设置 `0600`。外部 Provider 包括 Vault、AWS Secrets Manager、GitHub Actions 和 Kubernetes；没有可用连接时写入 `unavailable` 状态。
-
-Resolver 生成不含值的 Runtime Context，并可通过 `--exec` 把解析值注入后续命令：
-
-```bash
-python skills/test-orchestrator/scripts/resolve_secret.py \
-  --schema skills/test-orchestrator/secret.schema.json \
-  --suite test-cases.json --context test-context.json \
-  --out runtime-context.json \
-  --exec python skills/test-orchestrator/scripts/preflight.py \
-    test-cases.json runtime-context.json --out readiness.json
-```
-
-必需 Secret 状态不是 `resolved` 时，Resolver 返回非零退出码且不启动 `--exec`。Manual Input 通过 `--allow-manual` 明确启用，输入值只在本次进程树中存在。`persist` 只记录策略元数据，Resolver 不自动写回 Secret Store。
+Secret 值只存在于 Resolver 进程和它启动的子进程环境。
 
 ## 6. Preflight
 
-Preflight 先校验 Suite 和 Context，再对每条 Case 执行集合匹配：
+Preflight 检查：
 
 ```text
 execution_requirements ⊆ available
 ```
 
-环境变量条件使用当前进程中非空的变量判定。Secret 条件必须同时满足 Runtime Context 中状态为 `resolved` 且 `env_key` 在当前子进程中有非空值。
+状态：
 
 ```text
 全部满足 ───────────────► READY
@@ -137,60 +329,62 @@ execution_requirements ⊆ available
 需求未确定 ──────────────► NEEDS_CLARIFICATION
 ```
 
-Readiness 按缺口聚合受影响 Case 和 Provisioner。`secret_requirements` 是独立缺口分类，Secret 缺失不会被伪装为普通环境变量缺失。
+需求未澄清不是产品 FAIL。
 
 ## 7. Provision
 
-Provisioner 由 Test Context 定义，分为：
+Provisioner 类型：
 
-- `command`：执行受信任的测试环境脚本；
-- `playwright`：登录、Storage State 或 Browser Fixture；
-- `api`：创建测试数据或切换测试开关；
-- `manual`：输出人工操作说明，不自动执行。
+- `command`；
+- `playwright`；
+- `api`；
+- `manual`。
 
-自动 Provision 的顺序是：检查 `requires_env`、执行 `action`、执行 `verification`、保存直接 Evidence、成功后把 `provides` 写入 Runtime Context。Provision 失败写入 `provision_failure` blocker，不改变产品 Case 的 FAIL 语义。Cleanup 只针对本次成功创建且声明了 `cleanup_action` 的资源，并按成功顺序逆序执行。
+自动 Provision 固定执行 action、verification，验证成功后才写入 Runtime Context。Provision 失败写为 `provision_failure` blocker，不改变产品 FAIL 语义。
 
 ## 8. 执行通道
 
-四类通道统一返回 `Assertion ID`、`Status`、`Observed`、`Evidence[]` 和必要的 `Blocker`。
+正式 Test Suite 支持四类通道：
 
-### Browser
+| 通道 | 主要 Evidence |
+|---|---|
+| Browser | DOM、URL、Network、Trace、Screenshot、Storage State |
+| API | Request / Response、状态码、关键字段、SSE 事件 |
+| Log-Trace | 本次 Case 可关联的 Log / Trace / Metric |
+| Static Inspection | 需求明确指定的文件、配置和实际值 |
 
-使用 Microsoft Playwright CLI Skill 完成 Snapshot、页面探索、Fixture、Locator、Playwright Test、Request Mock、Network、Console、Storage、Trace、Screenshot 和 Video。
+Browser 继续使用 Microsoft Playwright CLI Skill。
 
-### API
+## 9. Report 与正式状态
 
-记录方法、目标、关键请求字段、状态码、关键响应字段和 SSE 事件顺序。敏感 Header、Cookie、Token 和密码在报告中删除或遮盖。
-
-### Log-Trace
-
-只读取 Context 声明的日志、Trace、Metric 或 Debug API，用 Case ID、请求 ID、Trace ID 或时间窗关联本次执行。无法可靠关联时返回 BLOCKED。
-
-### Static Inspection
-
-只验证需求明确指定的源码、配置或文件约束，Evidence 保存精确文件位置和观察值。
-
-通道 Adapter 是 Orchestrator 的工具中立执行规则，不创建插件注册表或独立服务。
-
-## 9. Report 与状态
-
-Report 精确覆盖 Suite 中的每个 Case，并校验 Case/Assertion 唯一性、Evidence 类型、Summary 一致性、Provision/Cleanup 记录和产物路径。
-
-Assertion 状态：
+正式 Test Suite Assertion 状态：
 
 - `PASS`：Observed 满足 Expected，Evidence 完整；
-- `FAIL`：Observed 与 Expected 直接矛盾，Evidence 完整；
-- `BLOCKED`：缺少执行或观察条件，并有结构化 blocker；
-- `NOT_EXECUTED`：运行取消或中断，并在 notes 中说明原因。
+- `FAIL`：Observed 与 Expected 直接矛盾；
+- `BLOCKED`：缺少执行或观察条件；
+- `NOT_EXECUTED`：运行取消或中断。
 
-Case 聚合顺序为 FAIL、BLOCKED、NOT_EXECUTED、PASS。需求未澄清的 Case 使用 `requirement_clarification` blocker；Secret 缺失使用 `secret_requirements` blocker。报告不包含根因推测、修复建议或 Secret 值。
+Case 聚合和 Report Schema 保持原逻辑不变。
 
 ## 10. 公开契约
 
-`requirement-discovery` 的 `requirements.md` 不是公共 JSON 契约。现有公开 JSON 契约保持不变：
+`exploratory-testing` 的 `exploration-report.md` 和可选 `requirements.md` 都是 Markdown 产物，**不是新的公共 JSON 契约**。
+
+现有公开 JSON 契约保持不变：
 
 - `skills/test-design/schema.json`：Test Suite；
-- `skills/test-orchestrator/context.schema.json`：Test Context 和 Runtime Context；
-- `skills/test-orchestrator/secret.schema.json`：Secret 定义清单；
-- `skills/test-orchestrator/readiness.schema.json`：Preflight 输出；
-- `skills/test-orchestrator/schema.json`：最终 Test Report。
+- `skills/test-orchestrator/context.schema.json`：Test Context / Runtime Context；
+- `skills/test-orchestrator/secret.schema.json`：Secret 定义；
+- `skills/test-orchestrator/readiness.schema.json`：Readiness；
+- `skills/test-orchestrator/schema.json`：正式 Test Report。
+
+当前版本保持：
+
+```text
+Test Suite  1.4
+Test Context 1.2
+Readiness   1.0
+Report      1.3
+```
+
+`exploratory-testing` 第一版不引入 Multi-agent、LangGraph、Supervisor、SQLite、Persistent Memory、Application Map JSON Schema、Action Tape、自研 Browser Engine 或 Crawler。
