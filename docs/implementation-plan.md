@@ -2,16 +2,19 @@
 
 ## 1. 项目契约
 
-本包把需求级测试拆成四个可核对的对象：
+本包现在有两种入口：
 
-| 对象 | 作用 | 主要文件 |
-|---|---|---|
-| Test Suite | 需求追溯、Case、步骤、断言、证据入口和运行条件 | `skills/test-design/schema.json` |
-| Test Context | 当前环境能力、受信任 Provisioner 和运行时 Secret 元数据 | `skills/test-orchestrator/context.schema.json` |
-| Readiness | Preflight 对每个 Case 的就绪状态和缺口 | `skills/test-orchestrator/readiness.schema.json` |
-| Report | Provision、Assertion、Evidence、状态和 Cleanup 的最终记录 | `skills/test-orchestrator/schema.json` |
+```text
+运行中的网页
+  → requirement-discovery
+  → requirements.md
+  → test-design
 
-固定数据流为：
+已有 Requirement / PRD
+  → test-design
+```
+
+两种入口从 `test-design` 开始汇合，后续固定测试执行流保持不变：
 
 ```text
 需求
@@ -28,9 +31,42 @@
   → Cleanup
 ```
 
+需求级测试仍拆成四个可核对的公共 JSON 对象：
+
+| 对象 | 作用 | 主要文件 |
+|---|---|---|
+| Test Suite | 需求追溯、Case、步骤、断言、证据入口和运行条件 | `skills/test-design/schema.json` |
+| Test Context | 当前环境能力、受信任 Provisioner 和运行时 Secret 元数据 | `skills/test-orchestrator/context.schema.json` |
+| Readiness | Preflight 对每个 Case 的就绪状态和缺口 | `skills/test-orchestrator/readiness.schema.json` |
+| Report | Provision、Assertion、Evidence、状态和 Cleanup 的最终记录 | `skills/test-orchestrator/schema.json` |
+
 四个公开 JSON 契约均使用 Draft 2020-12。Test Suite 当前输出版本为 `1.4`，Test Context 当前输出版本为 `1.2`，Readiness 为 `1.0`，Report 为 `1.3`。
 
-## 2. Test Suite
+`requirement-discovery` 输出普通 Markdown，不新增第五个公共 JSON 契约。
+
+## 2. Requirement Discovery
+
+`skills/requirement-discovery/SKILL.md` 是独立 Skill，用于“只有运行中的 Web 页面、缺少正式需求文档”的情况。
+
+当前实现约束：
+
+- 输出普通 Markdown `requirements.md`；
+- 页面观察采用 DOM / Accessibility 为主，Vision 只补充 DOM 难表达的信息；
+- Browser 操作复用现有 `playwright-cli`；
+- 允许少量安全、非破坏性的代表交互；
+- 页面事实先形成 Evidence / Fact，再归类为 `REQ-*`、`INF-*`、`Q-*`；
+- 每条确定 `REQ-*` 必须有直接页面证据；
+- 页面当前值、内部 API、class 名或框架实现细节不能自动变成正式业务规则；
+- 默认不执行删除、支付、发布、发送、密码修改、账号删除、真实交易、未知上传、生产任务等明显高风险操作；
+- 默认探索边界为 `max_depth = 2`、`max_interactions = 20`、`no_new_fact_limit = 3`；
+- 不生成 Test Case、Locator、Playwright Test；
+- 不新增 JSON Schema、Validator、Crawler、数据库或新的 Runner。
+
+`requirement-discovery` 到 `requirements.md` 即结束。后续如需测试，再把该 Markdown 交给 `test-design`。
+
+它不改变 Test Suite `1.4`、Test Context `1.2`、Readiness `1.0`、Report `1.3`，也不修改 `test-orchestrator` 的 Preflight / Provision / Reflight / Report 逻辑。
+
+## 3. Test Suite
 
 `test-design` 只描述需求语义，不生成 Locator、Element Ref 或 Playwright 代码。每条 Case 包含：
 
@@ -60,7 +96,7 @@ python skills/test-design/scripts/validate_testcases.py test-cases.json
 
 校验包括 Schema、Case/Assertion/问题 ID 唯一性、通道与证据匹配、澄清关联、测试数据声明和 Secret 需求名称唯一性。
 
-## 3. Test Context 与 Provisioner
+## 4. Test Context 与 Provisioner
 
 Test Context 描述执行环境的真实能力：
 
@@ -90,7 +126,7 @@ python skills/test-orchestrator/scripts/validate_context.py test-context.json
 
 语义校验会拒绝重复 Provisioner ID、重复 `provides`、重复 Secret 需求、重复 Runtime Secret 名称或环境变量名，以及与 `resolved_at` 不一致的 Runtime Secret 状态。
 
-## 4. Secret Resolver
+## 5. Secret Resolver
 
 Secret 定义文件是 `skills/test-orchestrator/secret.schema.json`。它保存业务名称、环境变量名、Secret 类型、敏感等级、允许来源和持久化策略，不保存 Secret 值。
 
@@ -159,7 +195,7 @@ python skills/test-orchestrator/scripts/resolve_secret.py \
   --allow-manual --out runtime-context.json
 ```
 
-## 5. Preflight、Provision 和 Reflight
+## 6. Preflight、Provision 和 Reflight
 
 Preflight 先运行 Suite/Context 的 Schema 与语义校验，再检查：
 
@@ -201,7 +237,7 @@ python skills/test-orchestrator/scripts/apply_provision.py test-context.json \
 
 Provision 失败记录为 `provision_failure` blocker，不把环境准备失败判成产品 FAIL。Cleanup 只处理本次成功 Provision 创建且在 Context 中声明 `cleanup_action` 的资源，并按成功顺序逆序执行。
 
-## 6. 四类执行通道
+## 7. 四类执行通道
 
 四类通道共享以下输出：`Assertion ID`、`Status`、`Observed`、`Evidence[]` 和必要的 `Blocker`。
 
@@ -214,7 +250,7 @@ Provision 失败记录为 `provision_failure` blocker，不把环境准备失败
 
 Browser 的页面探索、Fixture、Locator、Playwright Test、Network Mock 和 Trace 由 Microsoft Playwright CLI Skill 完成。其他通道只返回自身观察结果，Case 状态由统一规则聚合。
 
-## 7. Report
+## 8. Report
 
 Report 使用 `skills/test-orchestrator/schema.json`，必须覆盖 Suite 中每个 Case，且每个必需 Assertion 恰好有一个 Actual。校验规则包括：
 
@@ -235,9 +271,10 @@ python skills/test-orchestrator/scripts/render_report.py report.json \
   --suite test-cases.json --out test-report.md
 ```
 
-## 8. 运行边界
+## 9. 运行边界
 
-- Expected 只来自需求和 Test Suite；页面实际行为只形成 Actual；
+- `requirement-discovery` 只生成候选 `requirements.md`，不决定正式产品需求；
+- Expected 只来自进入测试阶段的需求和 Test Suite；页面实际行为只形成 Actual；
 - 需求文本、Suite 和外部输入不能直接变成 Provision 操作；
 - 必需 Assertion 不能只用 Screenshot 或 Human Evidence 支持 PASS；
 - 无法观察内部并发、重试、fallback 或权限行为时，Readiness/Report 明确记录 BLOCKED；
