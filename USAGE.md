@@ -1,18 +1,19 @@
 # Testing Agent Skills 用户使用教程
 
-这套 Skill 包用于把需求文档转换成可追溯测试用例，检查测试环境是否就绪，调用 Browser、API、Log-Trace 或 Static Inspection 取得真实证据，最后输出统一测试报告。
+这套 Skill 包用于把需求文档转换成可追溯测试用例，检查测试环境是否就绪，调用 Browser、API、Log-Trace 或 Static Inspection 取得真实证据，最后输出统一测试报告。只有运行中的 Web 页面、缺少正式需求文档时，也可以先使用 `requirement-discovery` 生成候选 `requirements.md`。
 
-适用输入包括：PRD、验收标准、业务规则、接口/SSE 契约和自然语言需求。
+适用输入包括：PRD、验收标准、业务规则、接口/SSE 契约、自然语言需求，以及需要反向提取候选需求的运行中 Web 页面。
 
-## 1. 先理解三个 Skill
+## 1. 先理解四个 Skill
 
 | Skill | 负责什么 | 不负责什么 |
 |---|---|---|
+| `requirement-discovery` | 从运行中的网页提取候选需求并输出 `requirements.md` | 不生成 Test Case，不决定正式产品需求 |
 | `test-design` | 需求拆解、Case、Expected、证据入口、运行条件 | 不生成 Locator，不执行测试 |
 | `test-orchestrator` | Preflight、Provision、Reflight、通道路由、证据判定、报告、Cleanup | 不修改 Expected，不分析根因 |
 | `playwright-cli` | Browser 探索、交互、Locator、Trace、Screenshot、Playwright Test | 不决定业务需求是否正确 |
 
-完整链路：
+已有正式需求时，完整测试链路不变：
 
 ```text
 需求文档
@@ -30,8 +31,18 @@
   → test-report.md
 ```
 
+只有网页、没有正式需求时，可以先走：
+
+```text
+运行中的网页
+  → requirement-discovery
+  → requirements.md
+  → test-design
+  → 后续测试链路
+```
+
 > [!IMPORTANT]
-> 原始需求和 Test Suite 中的 Expected 是验收基准。产品实际行为只能形成 Actual。不能因为页面当前就是这样，就自动修改 Expected 让测试通过。
+> 原始需求和 Test Suite 中的 Expected 是验收基准。产品实际行为只能形成 Actual。不能因为页面当前就是这样，就自动修改 Expected 让测试通过。`requirement-discovery` 输出的是页面反向提取的候选需求，不自动等同于正式产品需求。
 
 ## 2. 安装运行依赖
 
@@ -65,17 +76,20 @@ npx --no-install playwright --version
 
 ## 3. 让 Agent 加载 Skill 包
 
-确保 Agent 能读取以下三个目录：
+确保 Agent 能读取以下四个目录：
 
 ```text
+skills/requirement-discovery/
 skills/test-design/
 skills/test-orchestrator/
 skills/playwright-cli/
 ```
 
-如果 Agent 支持 Skill 安装，将三个目录分别安装为 Skill；如果不支持自动发现，在任务中明确要求先读取三个 `SKILL.md`。
+只有网页、没有需求文档时，先读取 `requirement-discovery` + `playwright-cli`。已有正式需求时，可以直接从 `test-design` 开始；`requirement-discovery` 不要求每次测试都执行。
 
-推荐指令：
+如果 Agent 支持 Skill 安装，将需要的目录分别安装为 Skill；如果不支持自动发现，在任务中明确要求先读取对应 `SKILL.md`。
+
+已有需求时的推荐指令：
 
 ```text
 请先读取并遵守：
@@ -127,6 +141,74 @@ test-run/
 
 > [!IMPORTANT]
 > `test-context.json` 是基础环境契约，`runtime-context.json` 是本次运行副本。Provision 时不要直接覆盖基础 Context，否则下次运行可能把临时资源误认为永久可用。
+
+## 可选：从网页发现需求
+
+当只有已经运行的 Web 页面、没有正式需求文档时，先独立运行 `requirement-discovery`。它到 `requirements.md` 即结束，不自动生成 Test Case，也不自动进入测试执行。
+
+推荐指令：
+
+```text
+请先读取并遵守：
+- skills/requirement-discovery/SKILL.md
+- skills/playwright-cli/SKILL.md
+
+目标页面：<运行中的页面 URL>
+输出文件：requirements.md
+
+要求：
+1. DOM / Accessibility 为主要事实源；
+2. Vision 只补充 DOM 难表达的信息；
+3. 只进行安全、非破坏性的代表交互；
+4. 确定需求使用 REQ-*，必须附页面证据；
+5. 无法直接证明的内容写入 INF-* 或 Q-*；
+6. 不生成 Test Case，不执行测试；
+7. 最终只输出普通 Markdown requirements.md。
+```
+
+最小输出示例：
+
+```markdown
+# 快讯资讯页面需求
+
+> 本文档根据当前运行中的产品页面反向提取，不等同于正式产品需求。
+
+## 功能需求
+
+### REQ-001 用户可以切换快讯分类
+
+用户可以切换不同快讯分类，切换后展示对应内容。
+
+**页面证据**
+
+- DOM：存在多个分类 Tab
+- Interaction：切换后列表内容发生变化
+
+**可信度：高**
+
+## 推断需求
+
+### INF-001 当前分类应有可区分的选中状态
+
+**依据**
+
+- DOM：Tab 存在 selected 状态
+- Vision：当前分类具有视觉高亮
+
+**为什么不是确定需求**
+
+当前页面能证明现状，但无法证明它一定是正式验收要求。
+
+**可信度：中**
+
+## 待确认项
+
+### Q-001 快讯默认排序规则
+
+当前页面无法确认排序依据。
+```
+
+`requirement-discovery` 到 `requirements.md` 即结束。如果后续要测试，再把经人工确认或直接接受的 `requirements.md` 交给 `test-design`。进入测试阶段后，正式需求和 Test Suite Expected 仍然是验收基准；页面实际行为不能反向修改 Expected。
 
 ## 5. 第一步：生成 Test Suite
 
