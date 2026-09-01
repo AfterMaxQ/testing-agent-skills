@@ -1,119 +1,139 @@
 # Testing Agent Skills
 
-面向 Coding Agent 的通用测试 Skill 包。输入可以是 PRD、验收标准、业务规则、接口契约或自然语言需求；输出为可追溯 Test Suite、测试就绪检查和统一测试报告。
+面向 Coding Agent 的通用测试 Skill 包。既支持 PRD、验收标准、业务规则、接口契约或自然语言需求直接进入 `test-design`，也支持只有运行中的 Web 页面时，先通过 `requirement-discovery` 反向提取候选 `requirements.md`。后续输出仍为可追溯 Test Suite、测试就绪检查和统一测试报告。
 
 详细的用户操作说明和关键注意事项见 [USAGE.md](USAGE.md)。
 
-Browser 测试直接使用 Microsoft Playwright CLI Skill。自研部分负责需求级测试设计、运行条件声明、测试环境 Preflight、跨通道路由、证据判定和报告汇总。
+Browser 能力直接使用 Microsoft Playwright CLI Skill。自研部分负责页面需求发现、需求级测试设计、运行条件声明、测试环境 Preflight、跨通道路由、证据判定和报告汇总。
 
 ## 1. 架构
 
 ```text
+运行中的网页
+     │
+     ▼
+┌───────────────────────┐
+│ requirement-discovery │
+│ 页面候选需求发现        │
+└───────────┬───────────┘
+            │ requirements.md
+            └──────────────────────┐
+                                   ▼
                          Requirement / PRD
-                                │
-                                ▼
-                       ┌─────────────────┐
-                       │   test-design   │
-                       │   需求级测试设计  │
-                       └────────┬────────┘
-                                │ Test Suite
-                                ▼
-                     execution_requirements
-                                │
-                                ▼
-                         ┌──────────────┐
-                         │ Test Context │
-                         │ 当前环境能力  │
-                         └──────┬───────┘
-                                │
-                                ▼
-                    ┌────────────────────────┐
-                    │   test-orchestrator    │
-                    │ Secret / Preflight /   │
-                    │ Provision / Reflight   │
-                    └───────────┬────────────┘
-                                │
-                      Ready / Provisioned
-                                │
-              ┌─────────────────┼──────────────────┐
-              │                 │                  │
-              ▼                 ▼                  ▼
-          browser             api          log_trace / static
-              │                 │                  │
-              ▼                 │                  │
-      ┌─────────────────┐       │                  │
-      │ playwright-cli  │       │                  │
-      │ 官方 Browser Skill│      │                  │
-      └────────┬────────┘       │                  │
-               └────────────────┼──────────────────┘
-                                │
-                                ▼
-                         Actual Evidence
-                                │
-                                ▼
-                       PASS / FAIL / BLOCKED
-                                │
-                                ▼
-                         Unified Report
+                                   │
+                                   ▼
+                          ┌─────────────────┐
+                          │   test-design   │
+                          │   需求级测试设计  │
+                          └────────┬────────┘
+                                   │ Test Suite
+                                   ▼
+                        execution_requirements
+                                   │
+                                   ▼
+                            ┌──────────────┐
+                            │ Test Context │
+                            │ 当前环境能力  │
+                            └──────┬───────┘
+                                   │
+                                   ▼
+                       ┌────────────────────────┐
+                       │   test-orchestrator    │
+                       │ Secret / Preflight /   │
+                       │ Provision / Reflight   │
+                       └───────────┬────────────┘
+                                   │
+                         Ready / Provisioned
+                                   │
+                 ┌─────────────────┼──────────────────┐
+                 │                 │                  │
+                 ▼                 ▼                  ▼
+             browser             api          log_trace / static
+                 │                 │                  │
+                 ▼                 │                  │
+         ┌─────────────────┐       │                  │
+         │ playwright-cli  │       │                  │
+         │ 官方 Browser Skill│      │                  │
+         └────────┬────────┘       │                  │
+                  └────────────────┼──────────────────┘
+                                   │
+                                   ▼
+                            Actual Evidence
+                                   │
+                                   ▼
+                          PASS / FAIL / BLOCKED
+                                   │
+                                   ▼
+                            Unified Report
 ```
 
 模块职责：
 
 | 模块 | 负责 |
 |---|---|
+| `requirement-discovery` | 从运行中的网页基于 DOM / Accessibility、Vision 补充和安全交互提取候选需求，输出 `requirements.md` |
 | `test-design` | 需求拆解、场景、断言、证据入口、执行通道、运行条件、需求追溯 |
 | `test-orchestrator` | Preflight、Provision 写回、Reflight、执行路由、Evidence 汇总、状态判定、报告与 Cleanup |
 | `playwright-cli` | Browser 探索、Seed/Fixture、Locator、Playwright Test、Network Mock、Trace、Screenshot |
 
+`requirement-discovery` 是可选前置入口，不属于 `test-orchestrator`。已有正式需求时可以直接从 `test-design` 开始。
+
 ## 2. 数据流
 
 ```text
-需求文档
+运行中的网页
   │
-  │ test-design
+  │ requirement-discovery
   ▼
-test-cases.json
-  │
-  │ 声明每个 Case 的 execution_requirements
-  ▼
-test-context.json ───────────────┐
-  │                              │
-  └──────────────┬───────────────┘
-                 ▼
-         Secret Resolution
-                 │
-                 ▼
-              Preflight
-                 │
-       ┌─────────┼─────────┐
-       ▼         ▼         ▼
-     READY  PROVISIONABLE BLOCKED
-       │         │
-       │      Provision
-       │         │
-       │         ▼
-       │   runtime-context.json
-       │         │
-       │      Reflight
-       │         │
-       └────┬────┘
-            ▼
-          Execute
-            │
-    ┌───────┼──────────────┐
-    ▼       ▼              ▼
- Browser   API       Log/Trace / Static
-    │
-    ▼
-playwright-cli
-    │
-    └──────────────► Evidence
-                       │
-                       ▼
-                   report.json
-                       │
-                       ▼
-                 test-report.md
+requirements.md ───────────────┐
+                               │
+需求文档 / PRD ────────────────┤
+                               ▼
+                          test-design
+                               │
+                               ▼
+                         test-cases.json
+                               │
+                               │ 声明每个 Case 的 execution_requirements
+                               ▼
+                    test-context.json ───────────────┐
+                               │                     │
+                               └─────────┬───────────┘
+                                         ▼
+                                 Secret Resolution
+                                         │
+                                         ▼
+                                      Preflight
+                                         │
+                               ┌─────────┼─────────┐
+                               ▼         ▼         ▼
+                             READY  PROVISIONABLE BLOCKED
+                               │         │
+                               │      Provision
+                               │         │
+                               │         ▼
+                               │   runtime-context.json
+                               │         │
+                               │      Reflight
+                               │         │
+                               └────┬────┘
+                                    ▼
+                                  Execute
+                                    │
+                            ┌───────┼──────────────┐
+                            ▼       ▼              ▼
+                         Browser   API       Log/Trace / Static
+                            │
+                            ▼
+                     playwright-cli
+                            │
+                            └──────────────► Evidence
+                                               │
+                                               ▼
+                                           report.json
+                                               │
+                                               ▼
+                                         test-report.md
 ```
 
 ### 2.1 Test Suite 声明运行条件
@@ -205,7 +225,7 @@ Preflight 将每条 Case 分为：
 
 `readiness.md` 会按缺失条件聚合受影响 Case，便于一次补齐账号、权限、日志入口或测试数据。
 
-对可自动准备的 Gap，`test-orchestrator` 执行 Test Context 中受信任的 Provisioner 并验证结果。验证成功后执行：
+对可自动准备的 Gap，`test-orchestrator` 执行 Test Context 中受信任的 Provisioner并验证结果。验证成功后执行：
 
 ```bash
 python skills/test-orchestrator/scripts/apply_provision.py test-context.json \
@@ -346,8 +366,13 @@ testing-agent-skills/
 ├── USAGE.md
 ├── docs/
 │   ├── architecture.md
-│   └── implementation-plan.md
+│   ├── implementation-plan.md
+│   └── superpowers/
+│       ├── specs/
+│       └── plans/
 ├── skills/
+│   ├── requirement-discovery/
+│   │   └── SKILL.md
 │   ├── test-design/
 │   │   ├── SKILL.md
 │   │   ├── schema.json
