@@ -13,13 +13,31 @@ Secret Resolver 将业务 Secret 名称解析为临时运行环境变量，并�
 
 ```text
 Runtime Secret Store
-  → Local Secret Store
-  → 当前进程环境变量
-  → 已声明但未配置的外部 Provider 状态
-  → 可选 Manual Input
+→ Local Secret Store
+→ 当前进程环境变量
+→ Secret Schema 声明的外部 Provider
+→ 可选 Manual Input
 ```
 
-默认本地文件：`.testing-agent/secrets.env`。
+## 本地文件
+
+Resolver 默认识别：
+
+```text
+.testing-agent/config.json
+.testing-agent/secrets.env
+.testing-agent/runtime/secrets.env
+```
+
+配置模板位于：
+
+```text
+skills/test-orchestrator/examples/
+├── config.example.json
+└── secrets.env.example
+```
+
+`.testing-agent/` 是本地运行目录，不提交到 Git。
 
 ## 安全边界
 
@@ -36,38 +54,37 @@ Runtime Secret Store
 解析并生成 Runtime Context：
 
 ```bash
-python scripts/resolve_secret.py \
-  --schema secret.schema.json \
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
   --suite test-cases.json \
   --context test-context.json \
   --out runtime-context.json
 ```
 
-让一个子进程继承解析后的 Secret：
+让子进程继承解析后的 Secret：
 
 ```bash
-python scripts/resolve_secret.py \
-  --schema secret.schema.json \
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
   --suite test-cases.json \
   --context test-context.json \
   --out runtime-context.json \
-  --exec python scripts/preflight.py test-cases.json runtime-context.json --out readiness.json
+  --exec python skills/test-orchestrator/scripts/preflight.py \
+    test-cases.json runtime-context.json --out readiness.json
 ```
-
-缺少必需 Secret 时，Resolver 写出缺失状态并返回非零退出码，不执行 `--exec` 子进程。
 
 启用一次性人工输入：
 
 ```bash
-python scripts/resolve_secret.py \
-  --schema secret.schema.json \
+python skills/test-orchestrator/scripts/resolve_secret.py \
+  --schema skills/test-orchestrator/secret.schema.json \
   --suite test-cases.json \
   --context test-context.json \
   --allow-manual \
   --out runtime-context.json
 ```
 
-外部 Provider（Vault、AWS Secrets Manager、GitHub Actions、Kubernetes）通过 Secret Schema 声明；Resolver 在当前运行中记录其状态，不执行未配置的外部连接。
+外部 Provider 包括 Vault、AWS Secrets Manager、GitHub Actions 和 Kubernetes。Resolver 只使用 Secret Schema 声明的来源。
 
 ## 解析结果
 
@@ -79,4 +96,4 @@ python scripts/resolve_secret.py \
 - `manual_required`：需要显式启用人工输入；
 - `expired`：来源值已过期。
 
-任何 required Secret 不是 `resolved` 时，测试 Case 都不能进入执行。
+任何 required Secret 不是 `resolved` 时，对应测试 Case 不能进入执行。
