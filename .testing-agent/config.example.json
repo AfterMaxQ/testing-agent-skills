@@ -1,5 +1,0 @@
-{
-  "local_store": ".testing-agent/secrets.env",
-  "runtime_store": ".testing-agent/runtime/secrets.env",
-  "allow_manual": false
-}
