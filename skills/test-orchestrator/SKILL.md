@@ -130,7 +130,7 @@ python scripts/update_progress.py .testing-agent/execution-progress.json init \
   --total <case_count>
 ```
 
-每个 Case 进入执行时立即记录 `current_case`：
+每个 Case 开始处理时立即记录 `current_case`；Reflight 后直接形成 BLOCKED 结果的 Case 也按同样方式先记录当前 Case，再写入终态 checkpoint：
 
 ```bash
 python scripts/update_progress.py .testing-agent/execution-progress.json start-case \
