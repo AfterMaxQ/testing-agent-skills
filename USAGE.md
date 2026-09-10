@@ -20,7 +20,7 @@
 |---|---|---|
 | `exploratory-testing` | URL-only 下建立 Application Map、规划 Mission、主动探索、发现异常、检查 Coverage | 不把当前页面行为当正式 Expected，不直接输出正式 FAIL |
 | `test-design` | 已有需求下生成 Case、Expected、证据入口和运行条件 | 不生成 Locator，不负责开放式探索 |
-| `test-orchestrator` | Secret Resolution、Preflight、Provision、Reflight、执行路由、Evidence、Report、Cleanup | 不修改 Expected，不替业务补需求 |
+| `test-orchestrator` | Secret Resolution、Preflight、Provision、Reflight、执行路由、Evidence、运行进度、Report、Cleanup | 不修改 Expected，不替业务补需求 |
 | `playwright-cli` | Browser Snapshot、交互、Locator、Network、Trace、Screenshot、Playwright Test | 不决定业务语义和测试 Oracle |
 
 ## 2. 安装依赖
@@ -105,6 +105,7 @@ Requirement / PRD
 → runtime-context.json
 → Reflight
 → Execute
+→ execution-progress.json
 → Evidence
 → report.json
 → Cleanup
@@ -119,6 +120,8 @@ Test Context 1.2
 Readiness    1.0
 Report       1.3
 ```
+
+`execution-progress.json` 只保存运行中的 checkpoint，不替代正式 `report.json`，也不改变 Report 1.3。
 
 ## 5. Secret 模板与本地目录
 
@@ -136,6 +139,7 @@ skills/test-orchestrator/examples/
 .testing-agent/
 ├── config.json
 ├── secrets.env
+├── execution-progress.json
 └── runtime/
     └── secrets.env
 ```
@@ -200,7 +204,7 @@ python skills/test-orchestrator/scripts/resolve_secret.py \
     test-cases.json runtime-context.json --out readiness.json
 ```
 
-## 7. Preflight 与 Report
+## 7. Preflight、执行进度与 Report
 
 ```bash
 python skills/test-design/scripts/validate_testcases.py test-cases.json
@@ -218,7 +222,42 @@ BLOCKED
 NEEDS_CLARIFICATION
 ```
 
-最终报告：
+正式执行开始时初始化运行进度：
+
+```bash
+python skills/test-orchestrator/scripts/update_progress.py \
+  .testing-agent/execution-progress.json init \
+  --suite-id <suite_id> \
+  --context-id <context_id> \
+  --total <case_count>
+```
+
+进入一个 Case 时：
+
+```bash
+python skills/test-orchestrator/scripts/update_progress.py \
+  .testing-agent/execution-progress.json start-case \
+  --case <case_id>
+```
+
+Case 得到终态后立即 checkpoint；`--evidence` 可以重复传入：
+
+```bash
+python skills/test-orchestrator/scripts/update_progress.py \
+  .testing-agent/execution-progress.json finish-case \
+  --case <case_id> \
+  --status PASS \
+  --evidence evidence/<artifact>
+```
+
+全部 Case 完成并成功生成正式报告后，将运行态标记为完成：
+
+```bash
+python skills/test-orchestrator/scripts/update_progress.py \
+  .testing-agent/execution-progress.json complete
+```
+
+正式报告仍按原有完整 Suite 契约生成和校验：
 
 ```bash
 python skills/test-orchestrator/scripts/validate_report.py report.json \
