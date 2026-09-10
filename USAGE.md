@@ -105,8 +105,7 @@ Requirement / PRD
 → runtime-context.json
 → Reflight
 → Execute
-→ execution-progress.json
-→ Evidence
+→ Evidence / execution-progress.json
 → report.json
 → Cleanup
 → test-report.md
