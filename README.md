@@ -23,7 +23,7 @@
 |---|---|
 | `exploratory-testing` | URL-only、未知 Expected 的应用理解与探索式测试 |
 | `test-design` | 已有需求下的 Case、Expected、证据入口、运行条件和追溯 |
-| `test-orchestrator` | Secret Resolution、Preflight、Provision、Reflight、执行路由、Evidence、Report、Cleanup |
+| `test-orchestrator` | Secret Resolution、Preflight、Provision、Reflight、执行路由、Evidence、运行进度、Report、Cleanup |
 | `playwright-cli` | Browser Snapshot、交互、Locator、Network、Trace、Screenshot、Playwright Test |
 
 ## 2. URL-only：Exploratory Testing
@@ -54,12 +54,15 @@ Requirement / PRD
 → Preflight
 → Provision / Reflight
 → Browser / API / Log-Trace / Static Inspection
+→ execution-progress.json
 → Evidence
 → report.json
 → test-report.md
 ```
 
 Test Suite 的 Expected 只来自正式需求和 Test Suite，产品实际行为只形成 Actual。
+
+`test-orchestrator` 在正式执行开始时创建 `execution-progress.json`，进入 Case 时更新当前 Case，每个 Case 得到 `PASS`、`FAIL`、`BLOCKED` 或 `NOT_EXECUTED` 终态后立即写入一次 checkpoint。该文件只表示本次执行的运行态进度；正式 `report.json` 仍在全部 Case 结束后生成，并继续遵守 Report 1.3 的完整 Suite 契约。
 
 ## 4. Secret 本地配置
 
@@ -77,6 +80,7 @@ skills/test-orchestrator/examples/
 .testing-agent/
 ├── config.json
 ├── secrets.env
+├── execution-progress.json
 └── runtime/
     └── secrets.env
 ```
@@ -118,6 +122,8 @@ Readiness    1.0
 Report       1.3
 ```
 
+`execution-progress.json` 是运行态 checkpoint，不属于正式 Report 契约。
+
 ## 6. 安装
 
 ```bash
@@ -150,6 +156,9 @@ testing-agent-skills/
     │   │   └── secrets.env.example
     │   ├── secret-resolver/
     │   │   └── SKILL.md
-    │   └── scripts/
+    │   ├── scripts/
+    │   │   └── update_progress.py
+    │   └── tests/
+    │       └── test_update_progress.py
     └── playwright-cli/
 ```
