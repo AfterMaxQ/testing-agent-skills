@@ -9,7 +9,7 @@ description: Use when 需要执行结构化测试套件、准备测试运行条�
 
 执行固定链路：
 
-`Test Suite + Test Context → Secret Resolution → Preflight → Provision → Runtime Context → Reflight → Execute / Progress Checkpoint → Evidence → Report → Cleanup`
+`Test Suite + Test Context → Secret Resolution → Preflight → Provision → Runtime Context → Reflight → Execute → Evidence / Progress Checkpoint → Report → Cleanup`
 
 Expected 只来自原始需求和 Test Suite。产品实际行为只能形成 Actual，不得为了让测试通过而修改 Expected。
 
@@ -154,7 +154,7 @@ python scripts/update_progress.py .testing-agent/execution-progress.json finish-
 python scripts/update_progress.py .testing-agent/execution-progress.json complete
 ```
 
-`complete` 只在 `completed == total` 且没有正在执行的 Case 时成功。当前实现不提供自动 Resume；测试进程异常终止时，最后一次成功写入的 checkpoint 保留为运行状态证据。
+`complete` 只在 `completed == total` 且没有正在执行的 Case 时成功。不提供自动 Resume；测试进程异常终止时，最后一次成功写入的 checkpoint 保留为运行状态证据。
 
 ### 6.2 Browser
 
