@@ -9,7 +9,7 @@ description: Use when 需要执行结构化测试套件、准备测试运行条�
 
 执行固定链路：
 
-`Test Suite + Test Context → Secret Resolution → Preflight → Provision → Runtime Context → Reflight → Execute → Evidence → Report → Cleanup`
+`Test Suite + Test Context → Secret Resolution → Preflight → Provision → Runtime Context → Reflight → Execute / Progress Checkpoint → Evidence → Report → Cleanup`
 
 Expected 只来自原始需求和 Test Suite。产品实际行为只能形成 Actual，不得为了让测试通过而修改 Expected。
 
@@ -117,7 +117,46 @@ python scripts/render_readiness.py readiness-after.json --out readiness-after.md
 
 每个通道返回相同结构：Assertion ID、Status、Observed、Evidence，无法执行时返回 Blocker。
 
-### 5.1 Browser
+### 6.1 执行进度 Checkpoint
+
+正式执行开始时创建 `.testing-agent/execution-progress.json`。它只保存本次运行的进度摘要，不属于 Report 1.3，也不替代最终 `report.json`。
+
+初始化：
+
+```bash
+python scripts/update_progress.py .testing-agent/execution-progress.json init \
+  --suite-id <suite_id> \
+  --context-id <context_id> \
+  --total <case_count>
+```
+
+每个 Case 进入执行时立即记录 `current_case`：
+
+```bash
+python scripts/update_progress.py .testing-agent/execution-progress.json start-case \
+  --case <case_id>
+```
+
+每个 Case 得到 `PASS`、`FAIL`、`BLOCKED` 或 `NOT_EXECUTED` 终态后立即写入 checkpoint，并保存本次 Case 已生成的 Evidence 路径；`--evidence` 可以重复传入：
+
+```bash
+python scripts/update_progress.py .testing-agent/execution-progress.json finish-case \
+  --case <case_id> \
+  --status <status> \
+  --evidence <artifact_path>
+```
+
+`FAIL` 时可同时传入 `--failure-description`。进度文件通过同目录临时文件加原子替换写入，避免中断时留下半写 JSON。它记录 `total`、`completed`、`passed`、`failed`、`blocked`、`not_executed`、当前 Case 和已完成 Case 摘要。
+
+全部 Case 都得到终态后，仍按第 8 节生成、校验并渲染正式报告；成功完成这些步骤后再执行：
+
+```bash
+python scripts/update_progress.py .testing-agent/execution-progress.json complete
+```
+
+`complete` 只在 `completed == total` 且没有正在执行的 Case 时成功。当前实现不提供自动 Resume；测试进程异常终止时，最后一次成功写入的 checkpoint 保留为运行状态证据。
+
+### 6.2 Browser
 
 **REQUIRED SUB-SKILL:** Use `playwright-cli`。
 
@@ -130,7 +169,7 @@ python scripts/render_readiness.py readiness-after.json --out readiness-after.md
 - 页面行为与 Expected 不一致时记录 Actual 并判 FAIL；
 - 只有用户确认需求变更后才能更新 Test Suite Expected。
 
-### 5.2 API
+### 6.3 API
 
 - 使用当前已有 HTTP 工具、CLI 或项目测试入口；
 - Evidence 记录方法、目标、关键请求字段、状态码和关键响应字段；
@@ -138,21 +177,21 @@ python scripts/render_readiness.py readiness-after.json --out readiness-after.md
 - 删除或遮盖密码、Token、Cookie 和敏感 Header；
 - 无 API 入口或权限时返回 BLOCKED。
 
-### 5.3 Log-Trace
+### 6.4 Log-Trace
 
 - 只读取 Test Context 声明的日志、Trace、Metric 或 Debug API；
 - 使用请求 ID、Trace ID、Case ID 或可靠时间窗关联本次执行；
 - Evidence 只保存直接支持 Assertion 的最小日志/Trace 摘要和产物路径；
 - 无法可靠关联时返回 BLOCKED，不用 UI 现象推测内部并发、重试或 fallback。
 
-### 5.4 Static Inspection
+### 6.5 Static Inspection
 
 - 只验证需求明确规定的源码、配置或文件约束；
 - 只读取当前公开仓库或用户明确授权的范围；
 - Evidence 保存文件路径、观察位置和实际值；
 - 不扩展为通用代码审查或根因分析。
 
-### 5.5 多通道
+### 6.6 多通道
 
 Case 声明的所有 `observe_via` 都是计划采集的证据。按 Assertion 路由对应通道，通道只返回自身观察结果，最终状态由统一规则聚合。
 
@@ -187,6 +226,8 @@ Case 同时存在 FAIL 和 BLOCKED Assertion 时，Case 为 FAIL，但必须保�
 - FAIL 写明具体 `failure_description`；
 - BLOCKED 写明结构化 blocker；
 - 不包含根因推测和修复建议。
+
+`execution-progress.json` 只用于执行中 checkpoint，因此不要求提前覆盖整个 Suite；最终正式结果仍只由完整 `report.json` 表达。
 
 执行：
 
