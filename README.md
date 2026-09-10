@@ -54,8 +54,7 @@ Requirement / PRD
 → Preflight
 → Provision / Reflight
 → Browser / API / Log-Trace / Static Inspection
-→ execution-progress.json
-→ Evidence
+→ Evidence / execution-progress.json
 → report.json
 → test-report.md
 ```
