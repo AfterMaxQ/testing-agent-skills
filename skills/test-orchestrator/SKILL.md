@@ -169,6 +169,17 @@ python scripts/update_progress.py .testing-agent/execution-progress.json complet
 - 页面行为与 Expected 不一致时记录 Actual 并判 FAIL；
 - 只有用户确认需求变更后才能更新 Test Suite Expected。
 
+Browser Case 的 Screenshot 既可以是 Assertion 计划中的 Evidence，也可以作为方便人类审阅的补充 Evidence。补充截图不改变 Assertion 的 `observe_via`，也不能替代必需的 DOM、URL、Network、Log 或其他计划证据。
+
+对有明确视觉状态的 Browser Case，优先保存少量代表性截图，并把最能说明结果的截图排在该 Case 的 screenshot Evidence 前面：
+
+- `FAIL`：优先保留 1–2 张能直接说明 Expected 与 Actual 差异的截图；
+- `BLOCKED`：登录、权限、错误页、不可用状态等能由页面直接说明时保留 1 张；
+- `PASS`：截图确实能帮助人工快速确认最终 UI 状态时最多保留 1 张代表图；
+- `NOT_EXECUTED`：不为了报告展示额外截图。
+
+不要为了“报告好看”对每一步都截图。额外截图只有在能帮助人工理解结果时才采集。
+
 ### 6.3 API
 
 - 使用当前已有 HTTP 工具、CLI 或项目测试入口；
@@ -239,6 +250,19 @@ python scripts/render_report.py report.json \
   --suite test-cases.json \
   --out test-report.md
 ```
+
+`test-report.md` 使用面向人工审阅的混合报告结构：
+
+1. 测试结果总览表；
+2. Case 总览表，直接显示状态和核心结果；
+3. 有 Provision 时显示环境准备与 Cleanup 表；
+4. 每个 Case 使用 `Expected / Actual / Result` 断言表；
+5. 关键 Screenshot 直接使用 Markdown 图片语法内嵌；
+6. 其余 Screenshot、Trace、Network、Log、JSON、文件等 Evidence 使用普通 Markdown 链接。
+
+截图内嵌按 Case 状态限制数量：`FAIL` 最多 2 张、`BLOCKED` 最多 1 张、`PASS` 最多 1 张、`NOT_EXECUTED` 不内嵌。Renderer 按 Evidence 顺序选择，因此采证时应把最有代表性的 screenshot 放在前面；超出数量的截图仍保留为可点击 Evidence，不丢失证据。
+
+`artifact_path` 仍以 `report.json` 所在目录为解析基准。Renderer 写 Markdown 时会重新计算相对于 `test-report.md` 所在目录的路径，因此 `--out` 指向其他目录时，图片和 Evidence 链接仍使用正确的 Markdown 相对路径。路径中需要转义的字符会转换为适合 Markdown 链接的形式。
 
 Playwright HTML Report 可作为 Browser 详细产物；`test-report.md` 是跨通道的正式需求级报告。
 
